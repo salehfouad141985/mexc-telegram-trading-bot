@@ -5,10 +5,6 @@ services:
     buildCommand: npm install
     startCommand: node src/index.js
     plan: free
-    disk:
-      name: bot-data
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1
     envVars:
       - key: PORT
         value: 10000
