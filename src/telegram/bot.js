@@ -74,6 +74,42 @@ async function startBot(onSignal) {
     const targetChannel = config.telegram.channel.replace('@', ''); // Remove @ if present
     logger.info(`📡 Listening for signals from channel: @${targetChannel}`);
 
+    // Fetch last 5 messages for dashboard rendering without trading
+    try {
+      logger.info('⏳ Fetching last 5 messages for historical testing...');
+      const history = await client.getMessages(targetChannel, { limit: 5 });
+      for (const msg of history) {
+        const text = msg.text || msg.message;
+        if (!text) continue;
+        
+        const parsedSignal = signalParser.parse(text);
+        if (parsedSignal) {
+          const exists = db.getSignalByTelegramMsgId.get(msg.id);
+          if (!exists) {
+            db.insertSignal.run({
+              symbol: parsedSignal.symbol,
+              timeframe: parsedSignal.timeframe,
+              entry_price: parsedSignal.entry,
+              stop_loss: parsedSignal.stopLoss,
+              tp1: parsedSignal.tp1,
+              tp2: parsedSignal.tp2,
+              tp3: parsedSignal.tp3,
+              tp4: parsedSignal.tp4,
+              score: parsedSignal.score,
+              setup: parsedSignal.setup,
+              status: 'SKIPPED',
+              raw_message: text,
+              telegram_msg_id: msg.id
+            });
+            logger.info(`📝 Historical signal loaded into Dashboard: ${parsedSignal.symbol}`);
+          }
+        }
+      }
+      logger.info('✅ Historical messages loading completed.');
+    } catch (err) {
+      logger.warn('⚠️ Could not fetch channel history:', { error: err.message });
+    }
+
     client.addEventHandler(async (event) => {
       const message = event.message;
       
