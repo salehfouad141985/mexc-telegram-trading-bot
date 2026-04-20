@@ -33,9 +33,9 @@ const config = {
     tp4Percent: parseFloat(process.env.TP4_PERCENT) || 15,
   },
 
-  // Dashboard
+  // Dashboard (Render uses process.env.PORT)
   dashboard: {
-    port: parseInt(process.env.DASHBOARD_PORT) || 3030,
+    port: parseInt(process.env.PORT) || parseInt(process.env.DASHBOARD_PORT) || 3030,
   },
 };
 

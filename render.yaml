@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: mexc-trading-bot
+    env: node
+    buildCommand: npm install
+    startCommand: node src/index.js
+    plan: free
+    disk:
+      name: bot-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_STRING_SESSION
+        sync: false
+      - key: TELEGRAM_CHANNEL
+        value: shaabane_signals
+      - key: MEXC_API_KEY
+        sync: false
+      - key: MEXC_SECRET_KEY
+        sync: false
+      - key: TRADE_AMOUNT_USDT
+        value: '10'
+      - key: MIN_SCORE
+        value: '7'
+      - key: AUTO_TRADE
+        value: 'true'
+      - key: DRY_RUN
+        value: 'true'
+      - key: TP1_PERCENT
+        value: '30'
+      - key: TP2_PERCENT
+        value: '30'
+      - key: TP3_PERCENT
+        value: '25'
+      - key: TP4_PERCENT
+        value: '15'
