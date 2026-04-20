@@ -15,7 +15,7 @@ services:
       - key: TELEGRAM_STRING_SESSION
         sync: false
       - key: TELEGRAM_CHANNEL
-        value: shaabane_signals
+        value: signal252
       - key: MEXC_API_KEY
         sync: false
       - key: MEXC_SECRET_KEY
