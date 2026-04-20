@@ -1,0 +1,125 @@
+const { TelegramClient } = require('telegram');
+const { StringSession } = require('telegram/sessions');
+const { NewMessage } = require('telegram/events');
+const input = require('input');
+const fs = require('fs');
+const path = require('path');
+const config = require('../config');
+const logger = require('../utils/logger');
+const signalParser = require('../parser/signalParser');
+const db = require('../database/db');
+
+let client = null;
+
+/**
+ * Helper to update .env with the new session string to avoid re-login
+ * @param {string} sessionString
+ */
+function saveSessionToEnv(sessionString) {
+  try {
+    const envPath = path.join(__dirname, '../../.env');
+    let envContent = fs.readFileSync(envPath, 'utf8');
+    
+    if (envContent.includes('TELEGRAM_STRING_SESSION=')) {
+      envContent = envContent.replace(/TELEGRAM_STRING_SESSION=.*/, `TELEGRAM_STRING_SESSION=${sessionString}`);
+    } else {
+      envContent += `\nTELEGRAM_STRING_SESSION=${sessionString}`;
+    }
+    
+    fs.writeFileSync(envPath, envContent);
+    logger.info('✅ Telegram session saved to .env file automatically.');
+  } catch (err) {
+    logger.error('Failed to save session to .env', { error: err.message });
+  }
+}
+
+/**
+ * Start MTProto Telegram UserBot Client
+ * @param {Function} onSignal - Callback when a valid signal is detected
+ */
+async function startBot(onSignal) {
+  if (!config.telegram.apiId || !config.telegram.apiHash) {
+    logger.error('❌ TELEGRAM_API_ID or TELEGRAM_API_HASH is not set! Check your .env file.');
+    return;
+  }
+
+  const stringSession = new StringSession(config.telegram.stringSession);
+
+  client = new TelegramClient(stringSession, config.telegram.apiId, config.telegram.apiHash, {
+    connectionRetries: 5,
+  });
+
+  logger.info('🤖 Starting Telegram UserBot MTProto connection...');
+
+  try {
+    // This will prompt via Terminal if stringSession is empty
+    await client.start({
+      phoneNumber: async () => await input.text('📱 Please enter your phone number (+1234...): '),
+      password: async () => await input.password('🔒 Please enter your 2FA password (if applicable): '),
+      phoneCode: async () => await input.text('✉️ Please enter the code you received on Telegram: '),
+      onError: (err) => logger.error('Telegram Login Error:', err),
+    });
+
+    logger.info('✅ You are successfully logged in to Telegram!');
+    
+    // Save the session if it's new
+    const sessionString = client.session.save();
+    if (sessionString !== config.telegram.stringSession) {
+      saveSessionToEnv(sessionString);
+    }
+
+    db.logActivity('SYSTEM', 'Telegram UserBot connected successfully');
+
+    // Register event listener for the target channel
+    const targetChannel = config.telegram.channel.replace('@', ''); // Remove @ if present
+    logger.info(`📡 Listening for signals from channel: @${targetChannel}`);
+
+    client.addEventHandler(async (event) => {
+      const message = event.message;
+      
+      // We only care about messages from the specific channel
+      try {
+        const chat = await message.getChat();
+        if (chat && chat.username && chat.username.toLowerCase() === targetChannel.toLowerCase()) {
+          logger.info(`📩 New message received from @${targetChannel}`);
+          
+          const text = message.text || message.message;
+          if (!text) return;
+
+          // Parse the signal
+          const parsedSignal = signalParser.parseTelegramMessage(text);
+          if (parsedSignal) {
+            parsedSignal.raw_message = text;
+            parsedSignal.telegram_msg_id = message.id;
+
+            logger.info('🎯 Signal parsed successfully!', { parsedSignal });
+            
+            // Pass to TradeManager
+            if (onSignal) onSignal(parsedSignal);
+          }
+        }
+      } catch (err) {
+        logger.error('Error processing incoming message', { error: err.message });
+      }
+    }, new NewMessage({ incoming: true }));
+
+  } catch (err) {
+    logger.error('❌ Failed to connect Telegram UserBot', { error: err.message });
+  }
+}
+
+/**
+ * Stop the Telegram UserBot Client
+ */
+async function stopBot() {
+  if (client) {
+    logger.info('🛑 Stopping Telegram UserBot...');
+    await client.disconnect();
+    client = null;
+  }
+}
+
+module.exports = {
+  startBot,
+  stopBot,
+};

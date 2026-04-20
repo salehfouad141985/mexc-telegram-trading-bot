@@ -1,0 +1,138 @@
+const express = require('express');
+const path = require('path');
+const config = require('../config');
+const logger = require('../utils/logger');
+const db = require('../database/db');
+
+const app = express();
+
+// Serve static files
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
+
+// ========================
+// API Routes
+// ========================
+
+// Get dashboard stats
+app.get('/api/stats', (req, res) => {
+  try {
+    const stats = db.getStats();
+    stats.dryRun = config.trading.dryRun;
+    stats.autoTrade = config.trading.autoTrade;
+    stats.tradeAmount = config.trading.tradeAmountUsdt;
+    stats.minScore = config.trading.minScore;
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get all signals
+app.get('/api/signals', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    const signals = db.getAllSignals.all(limit);
+    res.json(signals);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get active signals
+app.get('/api/signals/active', (req, res) => {
+  try {
+    const signals = db.getActiveSignals.all();
+    res.json(signals);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get trades for a signal
+app.get('/api/signals/:id/trades', (req, res) => {
+  try {
+    const trades = db.getTradesBySignalId.all(parseInt(req.params.id));
+    res.json(trades);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get all trades
+app.get('/api/trades', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 100;
+    const trades = db.getAllTrades.all(limit);
+    res.json(trades);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get open trades
+app.get('/api/trades/open', (req, res) => {
+  try {
+    const trades = db.getOpenTrades.all();
+    res.json(trades);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get activity log
+app.get('/api/activity', (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 30;
+    const activities = db.getRecentActivities.all(limit);
+    res.json(activities);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get MEXC balance (if connected)
+app.get('/api/balance', async (req, res) => {
+  try {
+    if (config.trading.dryRun) {
+      return res.json({ free: '1000.00', locked: '0.00', isDryRun: true });
+    }
+    const mexcClient = require('../exchange/mexcClient');
+    const balance = await mexcClient.getUsdtBalance();
+    res.json({ ...balance, isDryRun: false });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get config (safe fields only)
+app.get('/api/config', (req, res) => {
+  res.json({
+    dryRun: config.trading.dryRun,
+    autoTrade: config.trading.autoTrade,
+    tradeAmountUsdt: config.trading.tradeAmountUsdt,
+    minScore: config.trading.minScore,
+    tp1Percent: config.risk.tp1Percent,
+    tp2Percent: config.risk.tp2Percent,
+    tp3Percent: config.risk.tp3Percent,
+    tp4Percent: config.risk.tp4Percent,
+  });
+});
+
+// Serve dashboard
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+/**
+ * Start the dashboard server
+ */
+function startDashboard() {
+  const port = config.dashboard.port;
+  app.listen(port, '0.0.0.0', () => {
+    logger.info(`🖥️  Dashboard running at http://localhost:${port}`);
+    db.logActivity('SYSTEM', `Dashboard started on port ${port}`);
+  });
+}
+
+module.exports = { app, startDashboard };

@@ -1,0 +1,32 @@
+{
+  "name": "shaabane-signals-bot",
+  "version": "1.0.0",
+  "description": "Telegram Signal Trading Bot for MEXC - Captures signals from @shaabane_signals and auto-trades",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "dashboard-only": "node src/dashboard/server.js"
+  },
+  "keywords": [
+    "trading",
+    "bot",
+    "telegram",
+    "mexc",
+    "signals"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "input": "^1.0.1",
+    "telegram": "^2.26.22",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}
