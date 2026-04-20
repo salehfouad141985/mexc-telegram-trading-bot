@@ -77,29 +77,43 @@ async function startBot(onSignal) {
     client.addEventHandler(async (event) => {
       const message = event.message;
       
-      // We only care about messages from the specific channel
       try {
         const chat = await message.getChat();
-        if (chat && chat.username && chat.username.toLowerCase() === targetChannel.toLowerCase()) {
-          logger.info(`📩 New message received from @${targetChannel}`);
+        if (!chat) return;
+
+        const chatUsername = chat.username ? chat.username.toLowerCase() : '';
+        const chatTitle = chat.title ? chat.title.toLowerCase() : '';
+        const target = targetChannel.toLowerCase();
+
+        // Match by username OR if it's a private channel check if the title contains 'shabaan'
+        const isMatch = chatUsername === target || 
+                       (chatTitle && chatTitle.includes('shabaan')) ||
+                       (chatTitle && chatTitle.includes(target.replace(/_/g, ' ')));
+
+        if (isMatch) {
+          logger.info(`📩 New message received from ${chat.title || '@' + chatUsername}`);
           
           const text = message.text || message.message;
           if (!text) return;
 
-          // Parse the signal
-          const parsedSignal = signalParser.parseTelegramMessage(text);
+          // Parse the signal (Fixed method name from parseTelegramMessage to parse)
+          const parsedSignal = signalParser.parse(text);
           if (parsedSignal) {
             parsedSignal.raw_message = text;
             parsedSignal.telegram_msg_id = message.id;
 
-            logger.info('🎯 Signal parsed successfully!', { parsedSignal });
+            logger.info('🎯 Signal parsed successfully!', { symbol: parsedSignal.symbol });
+            db.logActivity('SIGNAL', `New signal detected: ${parsedSignal.symbol}`);
             
             // Pass to TradeManager
             if (onSignal) onSignal(parsedSignal);
+          } else {
+            logger.warn('Message did not match signal format or was incomplete.');
           }
         }
       } catch (err) {
         logger.error('Error processing incoming message', { error: err.message });
+        db.logActivity('ERROR', `Bot error: ${err.message}`);
       }
     }, new NewMessage({ incoming: true }));
 
