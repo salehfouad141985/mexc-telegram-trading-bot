@@ -243,7 +243,9 @@ class MexcClient {
   async isSymbolAvailable(symbol) {
     try {
       const info = await this.getExchangeInfo(symbol);
-      return info && info.status === 'ENABLED' && info.isSpotTradingAllowed !== false;
+      // MEXC API often uses '1' for enabled, but check for 'ENABLED' as well for safety
+      const isEnabled = info && (info.status === '1' || info.status === 1 || info.status === 'ENABLED');
+      return isEnabled && info.isSpotTradingAllowed !== false;
     } catch {
       return false;
     }
