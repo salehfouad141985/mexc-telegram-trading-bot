@@ -8,6 +8,9 @@ const { startDashboard } = require('./dashboard/server');
 const fs = require('fs');
 const path = require('path');
 
+// Fix MaxListenersExceededWarning from GramJS library
+require('events').EventEmitter.defaultMaxListeners = 20;
+
 // =============================================
 // 🤖 Shaabane Signals Trading Bot
 // =============================================
