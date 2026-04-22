@@ -78,67 +78,10 @@ async function startBot(onSignal) {
       targetChannel = BigInt(targetChannel);
     }
     
-    logger.info(`📡 Listening for signals from channel: ${targetChannel}`);
+    logger.info(`📡 Listening strictly for NEW upcoming live signals from channel: ${targetChannel}`);
 
-    // Catch the absolute latest signal on startup and execute it (replacing historical skips)
-    try {
-      logger.info('⏳ Checking channel to catch and execute the latest signal...');
-      const history = await client.getMessages(targetChannel, { limit: 20 });
-      let latestSignal = null;
-      let latestMsgId = null;
-      let rawText = null;
-
-      for (const msg of history) {
-        const text = msg.text || msg.message;
-        if (!text) continue;
-        
-        const parsedSignal = signalParser.parse(text);
-        if (parsedSignal) {
-          latestSignal = parsedSignal;
-          latestMsgId = msg.id;
-          rawText = text;
-          break; // Stop at the very first (newest) signal we find traversing backwards
-        }
-      }
-
-      if (latestSignal) {
-        const exists = db.getSignalByTelegramMsgId.get(latestMsgId);
-        if (!exists) {
-          latestSignal.raw_message = rawText;
-          latestSignal.telegram_msg_id = latestMsgId;
-          
-          logger.info(`🎯 Found latest signal on startup: ${latestSignal.symbol}! Executing immediately...`);
-          db.logActivity('SIGNAL', `Startup signal detected: ${latestSignal.symbol}`);
-          
-          const signalObj = {
-            symbol: latestSignal.symbol,
-            timeframe: latestSignal.timeframe,
-            entry_price: latestSignal.entry,
-            stop_loss: latestSignal.stopLoss,
-            tp1: latestSignal.tp1,
-            tp2: latestSignal.tp2,
-            tp3: latestSignal.tp3,
-            tp4: latestSignal.tp4,
-            score: latestSignal.score,
-            setup: latestSignal.setup,
-            status: 'NEW',
-            raw_message: latestSignal.raw_message,
-            telegram_msg_id: latestSignal.telegram_msg_id
-          };
-          const info = db.insertSignal.run(signalObj);
-          latestSignal.id = info.lastInsertRowid;
-          
-          // Execute it
-          if (onSignal) onSignal(latestSignal);
-        } else {
-          logger.info(`✅ Latest signal (${latestSignal.symbol}) has already been processed previously.`);
-        }
-      } else {
-        logger.info('ℹ️ No valid signals found in recent messages.');
-      }
-    } catch (err) {
-      logger.warn('⚠️ Could not fetch latest signal from channel:', { error: err.message });
-    }
+    // History fetching has been fully disabled based on user request.
+    // The bot will only process new signals that arrive while it is active.
 
     client.addEventHandler(async (event) => {
       const message = event.message;
