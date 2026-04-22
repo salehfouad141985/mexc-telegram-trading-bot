@@ -71,43 +71,73 @@ async function startBot(onSignal) {
     db.logActivity('SYSTEM', 'Telegram UserBot connected successfully');
 
     // Register event listener for the target channel
-    const targetChannel = config.telegram.channel.replace('@', ''); // Remove @ if present
-    logger.info(`📡 Listening for signals from channel: @${targetChannel}`);
+    let targetChannel = config.telegram.channel.replace('@', ''); // Remove @ if present
+    
+    // If targetChannel is a number (like -100123456), convert to BigInt for MTProto Private Channels
+    if (/^-?\d+$/.test(targetChannel)) {
+      targetChannel = BigInt(targetChannel);
+    }
+    
+    logger.info(`📡 Listening for signals from channel: ${targetChannel}`);
 
-    // Fetch last 5 messages for dashboard rendering without trading
+    // Catch the absolute latest signal on startup and execute it (replacing historical skips)
     try {
-      logger.info('⏳ Fetching last 5 messages for historical testing...');
-      const history = await client.getMessages(targetChannel, { limit: 5 });
+      logger.info('⏳ Checking channel to catch and execute the latest signal...');
+      const history = await client.getMessages(targetChannel, { limit: 20 });
+      let latestSignal = null;
+      let latestMsgId = null;
+      let rawText = null;
+
       for (const msg of history) {
         const text = msg.text || msg.message;
         if (!text) continue;
         
         const parsedSignal = signalParser.parse(text);
         if (parsedSignal) {
-          const exists = db.getSignalByTelegramMsgId.get(msg.id);
-          if (!exists) {
-            db.insertSignal.run({
-              symbol: parsedSignal.symbol,
-              timeframe: parsedSignal.timeframe,
-              entry_price: parsedSignal.entry,
-              stop_loss: parsedSignal.stopLoss,
-              tp1: parsedSignal.tp1,
-              tp2: parsedSignal.tp2,
-              tp3: parsedSignal.tp3,
-              tp4: parsedSignal.tp4,
-              score: parsedSignal.score,
-              setup: parsedSignal.setup,
-              status: 'SKIPPED',
-              raw_message: text,
-              telegram_msg_id: msg.id
-            });
-            logger.info(`📝 Historical signal loaded into Dashboard: ${parsedSignal.symbol}`);
-          }
+          latestSignal = parsedSignal;
+          latestMsgId = msg.id;
+          rawText = text;
+          break; // Stop at the very first (newest) signal we find traversing backwards
         }
       }
-      logger.info('✅ Historical messages loading completed.');
+
+      if (latestSignal) {
+        const exists = db.getSignalByTelegramMsgId.get(latestMsgId);
+        if (!exists) {
+          latestSignal.raw_message = rawText;
+          latestSignal.telegram_msg_id = latestMsgId;
+          
+          logger.info(`🎯 Found latest signal on startup: ${latestSignal.symbol}! Executing immediately...`);
+          db.logActivity('SIGNAL', `Startup signal detected: ${latestSignal.symbol}`);
+          
+          const signalObj = {
+            symbol: latestSignal.symbol,
+            timeframe: latestSignal.timeframe,
+            entry_price: latestSignal.entry,
+            stop_loss: latestSignal.stopLoss,
+            tp1: latestSignal.tp1,
+            tp2: latestSignal.tp2,
+            tp3: latestSignal.tp3,
+            tp4: latestSignal.tp4,
+            score: latestSignal.score,
+            setup: latestSignal.setup,
+            status: 'NEW',
+            raw_message: latestSignal.raw_message,
+            telegram_msg_id: latestSignal.telegram_msg_id
+          };
+          const info = db.insertSignal.run(signalObj);
+          latestSignal.id = info.lastInsertRowid;
+          
+          // Execute it
+          if (onSignal) onSignal(latestSignal);
+        } else {
+          logger.info(`✅ Latest signal (${latestSignal.symbol}) has already been processed previously.`);
+        }
+      } else {
+        logger.info('ℹ️ No valid signals found in recent messages.');
+      }
     } catch (err) {
-      logger.warn('⚠️ Could not fetch channel history:', { error: err.message });
+      logger.warn('⚠️ Could not fetch latest signal from channel:', { error: err.message });
     }
 
     client.addEventHandler(async (event) => {
@@ -119,12 +149,13 @@ async function startBot(onSignal) {
 
         const chatUsername = chat.username ? chat.username.toLowerCase() : '';
         const chatTitle = chat.title ? chat.title.toLowerCase() : '';
-        const target = targetChannel.toLowerCase();
+        const targetString = targetChannel.toString().toLowerCase();
 
         // Match by username OR if it's a private channel check if the title contains 'shabaan'
-        const isMatch = chatUsername === target || 
+        const isMatch = chatUsername === targetString || 
                        (chatTitle && chatTitle.includes('shabaan')) ||
-                       (chatTitle && chatTitle.includes(target.replace(/_/g, ' ')));
+                       (chatTitle && chatTitle.includes(targetString.replace(/_/g, ' '))) ||
+                       (chat.id && chat.id.toString() === targetString);
 
         if (isMatch) {
           logger.info(`📩 New message received from ${chat.title || '@' + chatUsername}`);
