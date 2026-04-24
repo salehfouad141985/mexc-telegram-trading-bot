@@ -49,9 +49,8 @@ function setupMessageHandler() {
   
   logger.info(`📡 Listening strictly for NEW upcoming live signals from channel: ${targetChannel}`);
 
-  client.addEventHandler(async (event) => {
-    const message = event.message;
-    
+  // Handler function for processing messages
+  async function handleMessage(message) {
     try {
       const chat = await message.getChat();
       if (!chat) return;
@@ -62,7 +61,7 @@ function setupMessageHandler() {
       const targetString = targetChannel.toString().toLowerCase();
 
       // === DEBUG LOG: Show ALL incoming messages so we can diagnose ===
-      logger.info(`🔍 [DEBUG] Incoming message from: username="${chatUsername}", title="${chatTitle}", id=${chatId}, target="${targetString}"`);
+      logger.info(`🔍 [DEBUG] Message from: username="${chatUsername}", title="${chatTitle}", id=${chatId}, target="${targetString}"`);
 
       // Match by username OR title OR chat id
       const isMatch = chatUsername === targetString || 
@@ -94,7 +93,26 @@ function setupMessageHandler() {
       logger.error('Error processing incoming message', { error: err.message });
       db.logActivity('ERROR', `Bot error: ${err.message}`);
     }
-  }, new NewMessage({ incoming: true }));
+  }
+
+  // Listen for ALL new messages (no filter) — catches both private msgs and channel posts
+  client.addEventHandler(async (event) => {
+    if (event.message) {
+      await handleMessage(event.message);
+    }
+  }, new NewMessage({}));
+
+  // Also listen for raw updates to catch channel posts that gramJS may classify differently
+  client.addEventHandler(async (update) => {
+    try {
+      if (update.message && !update._entities) {
+        // This catches UpdateNewChannelMessage which gramJS sometimes misses
+        logger.info('🔍 [RAW] Caught raw channel update');
+      }
+    } catch (err) {
+      // Silently ignore raw update errors
+    }
+  });
 }
 
 /**
