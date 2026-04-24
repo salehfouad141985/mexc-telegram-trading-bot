@@ -220,6 +220,42 @@ async function startBot(onSignal) {
 
     db.logActivity('SYSTEM', 'Telegram UserBot connected successfully');
 
+    // === CRITICAL: Fetch dialogs to activate channel update subscriptions ===
+    // Without this, Telegram will NOT send channel post updates to the client
+    logger.info('📋 Loading dialogs to activate channel subscriptions...');
+    try {
+      const dialogs = await client.getDialogs({ limit: 100 });
+      logger.info(`📋 Loaded ${dialogs.length} dialogs (channels, groups, chats)`);
+      
+      // Find and log our target channel specifically
+      let targetChannel = config.telegram.channel.replace('@', '').toLowerCase();
+      let foundTarget = false;
+      
+      for (const dialog of dialogs) {
+        const entity = dialog.entity;
+        const username = entity.username ? entity.username.toLowerCase() : '';
+        const title = dialog.title ? dialog.title.toLowerCase() : '';
+        const id = entity.id ? entity.id.toString() : '';
+        
+        if (username === targetChannel || title.includes('signal') || title.includes('shabaan')) {
+          logger.info(`🎯 Found target channel! title="${dialog.title}", username="${username}", id=${id}, type=${entity.className}`);
+          foundTarget = true;
+        }
+      }
+      
+      if (!foundTarget) {
+        logger.warn(`⚠️ Target channel "${targetChannel}" was NOT found in your dialogs! Make sure you are subscribed to the channel.`);
+        // List all channels for debugging
+        const channels = dialogs.filter(d => d.isChannel || d.entity.className === 'Channel');
+        logger.info(`📋 Your subscribed channels (${channels.length}):`);
+        for (const ch of channels) {
+          logger.info(`   → "${ch.title}" | username=${ch.entity.username || 'N/A'} | id=${ch.entity.id}`);
+        }
+      }
+    } catch (err) {
+      logger.warn('⚠️ Failed to load dialogs (non-fatal)', { error: err.message });
+    }
+
     // Setup the message handler
     setupMessageHandler();
     
