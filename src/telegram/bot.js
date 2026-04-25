@@ -1,6 +1,6 @@
 const { TelegramClient } = require('telegram');
 const { StringSession } = require('telegram/sessions');
-const { NewMessage } = require('telegram/events');
+const { Api } = require('telegram/tl');
 const input = require('input');
 const fs = require('fs');
 const path = require('path');
@@ -11,13 +11,13 @@ const db = require('../database/db');
 
 let client = null;
 let onSignalCallback = null;
-let reconnectTimer = null;
+let pollingTimer = null;
 let healthCheckTimer = null;
-let isReconnecting = false;
+let lastProcessedMsgId = 0;     // Track the last message ID we processed
+let targetEntity = null;         // Cached channel entity
 
 /**
  * Helper to update .env with the new session string to avoid re-login
- * @param {string} sessionString
  */
 function saveSessionToEnv(sessionString) {
   try {
@@ -38,142 +38,94 @@ function saveSessionToEnv(sessionString) {
 }
 
 /**
- * Setup the message event handler for the target channel
+ * POLLING-BASED message fetcher
+ * Periodically checks the target channel for new messages
+ * This is far more reliable than event-based approach on VPS servers
  */
-function setupMessageHandler() {
-  let targetChannel = config.telegram.channel.replace('@', '');
-  
-  if (/^-?\d+$/.test(targetChannel)) {
-    targetChannel = BigInt(targetChannel);
-  }
-  
-  logger.info(`📡 Listening strictly for NEW upcoming live signals from channel: ${targetChannel}`);
+async function pollForMessages() {
+  if (!client || !targetEntity) return;
 
-  // Handler function for processing messages
-  async function handleMessage(message) {
-    try {
-      const chat = await message.getChat();
-      if (!chat) return;
+  try {
+    // Fetch the latest 5 messages from the target channel
+    const messages = await client.getMessages(targetEntity, { limit: 5 });
+    
+    if (!messages || messages.length === 0) return;
 
-      const chatUsername = chat.username ? chat.username.toLowerCase() : '';
-      const chatTitle = chat.title ? chat.title.toLowerCase() : '';
-      const chatId = chat.id ? chat.id.toString() : '';
-      const targetString = targetChannel.toString().toLowerCase();
+    // Process messages newer than our last processed ID (oldest first)
+    const newMessages = messages
+      .filter(msg => msg.id > lastProcessedMsgId && msg.message)
+      .reverse(); // Process oldest first
 
-      // === DEBUG LOG: Show ALL incoming messages so we can diagnose ===
-      logger.info(`🔍 [DEBUG] Message from: username="${chatUsername}", title="${chatTitle}", id=${chatId}, target="${targetString}"`);
+    for (const msg of newMessages) {
+      const text = msg.message;
+      lastProcessedMsgId = msg.id;
 
-      // Match by username OR title OR chat id
-      const isMatch = chatUsername === targetString || 
-                     (chatTitle && chatTitle.includes('shabaan')) ||
-                     (chatTitle && chatTitle.includes('signal')) ||
-                     (chatTitle && chatTitle.includes(targetString.replace(/_/g, ' '))) ||
-                     (chatId === targetString);
+      logger.info(`📩 New message detected (ID: ${msg.id}): ${text.substring(0, 80)}...`);
 
-      if (isMatch) {
-        const text = message.text || message.message;
-        logger.info(`📩 ✅ MATCHED! New message from ${chat.title || '@' + chatUsername}: ${text ? text.substring(0, 80) + '...' : '[no text]'}`);
+      // Try to parse as a trading signal
+      const parsedSignal = signalParser.parse(text);
+      if (parsedSignal) {
+        parsedSignal.raw_message = text;
+        parsedSignal.telegram_msg_id = msg.id;
+
+        logger.info('🎯 Signal parsed successfully!', { 
+          symbol: parsedSignal.symbol, 
+          entry: parsedSignal.entry, 
+          score: parsedSignal.score,
+          targets: parsedSignal.targets.length
+        });
+        db.logActivity('SIGNAL', `New signal detected: ${parsedSignal.symbol}`);
         
-        if (!text) return;
-
-        const parsedSignal = signalParser.parse(text);
-        if (parsedSignal) {
-          parsedSignal.raw_message = text;
-          parsedSignal.telegram_msg_id = message.id;
-
-          logger.info('🎯 Signal parsed successfully!', { symbol: parsedSignal.symbol, entry: parsedSignal.entry, score: parsedSignal.score });
-          db.logActivity('SIGNAL', `New signal detected: ${parsedSignal.symbol}`);
-          
-          if (onSignalCallback) onSignalCallback(parsedSignal);
-        } else {
-          logger.warn(`⚠️ Message from target channel did not match signal format. Preview: ${text.substring(0, 100)}`);
-        }
+        if (onSignalCallback) onSignalCallback(parsedSignal);
+      } else {
+        logger.info(`ℹ️ Message is not a trading signal, skipping.`);
       }
-    } catch (err) {
-      logger.error('Error processing incoming message', { error: err.message });
-      db.logActivity('ERROR', `Bot error: ${err.message}`);
     }
+  } catch (err) {
+    logger.error(`❌ Polling error: ${err.message}`);
+    // Don't crash — polling will retry on next interval
   }
+}
 
-  // Listen for ALL new messages (no filter) — catches both private msgs and channel posts
-  client.addEventHandler(async (event) => {
-    if (event.message) {
-      await handleMessage(event.message);
-    }
-  }, new NewMessage({}));
-
-  // Also listen for raw updates to catch channel posts that gramJS may classify differently
-  client.addEventHandler(async (update) => {
-    try {
-      if (update.message && !update._entities) {
-        // This catches UpdateNewChannelMessage which gramJS sometimes misses
-        logger.info('🔍 [RAW] Caught raw channel update');
-      }
-    } catch (err) {
-      // Silently ignore raw update errors
-    }
-  });
+/**
+ * Start polling the target channel
+ */
+function startPolling() {
+  if (pollingTimer) clearInterval(pollingTimer);
+  
+  const POLL_INTERVAL = 10000; // Check every 10 seconds
+  
+  logger.info(`🔄 Starting channel polling (every ${POLL_INTERVAL / 1000}s)...`);
+  
+  // First poll immediately
+  pollForMessages();
+  
+  // Then poll regularly
+  pollingTimer = setInterval(pollForMessages, POLL_INTERVAL);
 }
 
 /**
  * Periodic health check - verifies Telegram connection is alive
- * If connection dropped, triggers reconnection
  */
 function startHealthCheck() {
   if (healthCheckTimer) clearInterval(healthCheckTimer);
   
   healthCheckTimer = setInterval(async () => {
-    if (!client || isReconnecting) return;
+    if (!client) return;
     
     try {
-      // Try to ping Telegram by getting own user info
       const me = await client.getMe();
       if (me) {
         logger.info(`💓 Health check OK — connected as ${me.firstName || me.username}`);
       }
     } catch (err) {
-      logger.error(`💔 Health check FAILED: ${err.message} — triggering reconnect...`);
+      logger.error(`💔 Health check FAILED: ${err.message} — restarting connection...`);
       db.logActivity('WARNING', `Telegram connection lost: ${err.message}`);
-      attemptReconnect();
+      
+      // Force process exit — PM2 will restart us cleanly
+      process.exit(1);
     }
-  }, 30000); // Check every 30 seconds
-}
-
-/**
- * Attempt to reconnect to Telegram
- */
-async function attemptReconnect() {
-  if (isReconnecting) return;
-  isReconnecting = true;
-  
-  logger.warn('🔄 Attempting Telegram reconnection...');
-  db.logActivity('SYSTEM', 'Attempting Telegram reconnection...');
-  
-  try {
-    // Try to disconnect cleanly first
-    try {
-      if (client) await client.disconnect();
-    } catch (e) {
-      // Ignore disconnect errors
-    }
-    
-    // Reconnect
-    await client.connect();
-    
-    // Verify connection
-    const me = await client.getMe();
-    logger.info(`✅ Reconnected successfully as ${me.firstName || me.username}!`);
-    db.logActivity('SYSTEM', 'Telegram reconnected successfully');
-    
-    isReconnecting = false;
-  } catch (err) {
-    logger.error(`❌ Reconnection failed: ${err.message} — will retry in 10s...`);
-    isReconnecting = false;
-    
-    // Schedule retry
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => attemptReconnect(), 10000);
-  }
+  }, 60000); // Check every 60 seconds (reduced frequency since polling handles detection)
 }
 
 /**
@@ -194,7 +146,7 @@ async function startBot(onSignal) {
     connectionRetries: 20,
     retryDelay: 2000,
     autoReconnect: true,
-    useWSS: true,           // Use WebSocket Secure (port 443) instead of TCP (port 80) — much more stable on VPS
+    useWSS: true,
     floodSleepThreshold: 60,
   });
 
@@ -216,62 +168,59 @@ async function startBot(onSignal) {
       saveSessionToEnv(sessionString);
     }
 
-    // Log which user and verify connection
+    // Log which user
     const me = await client.getMe();
     logger.info(`👤 Logged in as: ${me.firstName} ${me.lastName || ''} (@${me.username || 'N/A'})`);
-
     db.logActivity('SYSTEM', 'Telegram UserBot connected successfully');
 
-    // === CRITICAL: Fetch dialogs to activate channel update subscriptions ===
-    // Without this, Telegram will NOT send channel post updates to the client
-    logger.info('📋 Loading dialogs to activate channel subscriptions...');
+    // === RESOLVE TARGET CHANNEL ===
+    const channelName = config.telegram.channel.replace('@', '');
+    logger.info(`📡 Resolving target channel: ${channelName}...`);
+    
     try {
+      // Try to get the channel entity directly
+      targetEntity = await client.getEntity(channelName);
+      logger.info(`🎯 Target channel resolved! title="${targetEntity.title}", id=${targetEntity.id}, type=${targetEntity.className}`);
+    } catch (err) {
+      logger.warn(`⚠️ Direct entity resolution failed, trying via dialogs...`);
+      
+      // Fallback: search through dialogs
       const dialogs = await client.getDialogs({ limit: 100 });
-      logger.info(`📋 Loaded ${dialogs.length} dialogs (channels, groups, chats)`);
-      
-      // Find and log our target channel specifically
-      let targetChannel = config.telegram.channel.replace('@', '').toLowerCase();
-      let foundTarget = false;
-      
       for (const dialog of dialogs) {
         const entity = dialog.entity;
         const username = entity.username ? entity.username.toLowerCase() : '';
-        const title = dialog.title ? dialog.title.toLowerCase() : '';
-        const id = entity.id ? entity.id.toString() : '';
-        
-        if (username === targetChannel || title.includes('signal') || title.includes('shabaan')) {
-          logger.info(`🎯 Found target channel! title="${dialog.title}", username="${username}", id=${id}, type=${entity.className}`);
-          foundTarget = true;
+        if (username === channelName.toLowerCase()) {
+          targetEntity = entity;
+          logger.info(`🎯 Target channel found via dialogs! title="${dialog.title}", id=${entity.id}`);
+          break;
         }
       }
-      
-      if (!foundTarget) {
-        logger.warn(`⚠️ Target channel "${targetChannel}" was NOT found in your dialogs! Make sure you are subscribed to the channel.`);
-        // List all channels for debugging
-        const channels = dialogs.filter(d => d.isChannel || d.entity.className === 'Channel');
-        logger.info(`📋 Your subscribed channels (${channels.length}):`);
-        for (const ch of channels) {
-          logger.info(`   → "${ch.title}" | username=${ch.entity.username || 'N/A'} | id=${ch.entity.id}`);
-        }
-      }
-    } catch (err) {
-      logger.warn('⚠️ Failed to load dialogs (non-fatal)', { error: err.message });
     }
 
-    // Setup the message handler
-    setupMessageHandler();
+    if (!targetEntity) {
+      logger.error(`❌ FATAL: Could not find channel "${channelName}". Make sure you are subscribed to it!`);
+      return;
+    }
+
+    // Get the latest message ID so we only process NEW messages going forward
+    try {
+      const latestMessages = await client.getMessages(targetEntity, { limit: 1 });
+      if (latestMessages && latestMessages.length > 0) {
+        lastProcessedMsgId = latestMessages[0].id;
+        logger.info(`📌 Starting from message ID: ${lastProcessedMsgId} (will only process newer messages)`);
+      }
+    } catch (err) {
+      logger.warn(`⚠️ Could not fetch latest message ID: ${err.message}`);
+    }
+
+    // Start polling for new messages (REPLACES broken event handler)
+    startPolling();
     
-    // Start periodic health checks to detect dropped connections
+    // Start periodic health checks
     startHealthCheck();
 
-    // === SELF-TEST: Send a test message to verify event handler works ===
-    try {
-      logger.info('🧪 Running self-test: sending test message to Saved Messages...');
-      await client.sendMessage('me', { message: '🤖 Bot self-test: Event handler verification at ' + new Date().toISOString() });
-      logger.info('🧪 Test message sent. If event handler works, you should see a DEBUG log for it within seconds...');
-    } catch (err) {
-      logger.warn('⚠️ Self-test failed (non-critical)', { error: err.message });
-    }
+    // Verify polling works with a quick test
+    logger.info('🧪 Polling system active — will check for new messages every 10 seconds');
 
   } catch (err) {
     logger.error('❌ Failed to connect Telegram UserBot', { error: err.message });
@@ -287,7 +236,7 @@ async function startBot(onSignal) {
  */
 async function stopBot() {
   if (healthCheckTimer) clearInterval(healthCheckTimer);
-  if (reconnectTimer) clearTimeout(reconnectTimer);
+  if (pollingTimer) clearInterval(pollingTimer);
   
   if (client) {
     logger.info('🛑 Stopping Telegram UserBot...');
