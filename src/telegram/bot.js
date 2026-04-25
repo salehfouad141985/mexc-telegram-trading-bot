@@ -65,6 +65,13 @@ async function pollForMessages() {
       // Try to parse as a trading signal
       const parsedSignal = signalParser.parse(text);
       if (parsedSignal) {
+        // === DUPLICATE CHECK: Skip if already processed ===
+        const existing = db.getSignalByTelegramMsgId.get(msg.id);
+        if (existing) {
+          logger.info(`⏭️ Signal already processed (msg ID: ${msg.id}), skipping.`);
+          continue;
+        }
+
         parsedSignal.raw_message = text;
         parsedSignal.telegram_msg_id = msg.id;
 

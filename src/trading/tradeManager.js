@@ -29,6 +29,16 @@ class TradeManager {
         return;
       }
 
+      // Check if we already have an active signal for this symbol
+      const activeSignals = db.getActiveSignals.all();
+      const existingActive = activeSignals.find(s => s.symbol === signal.symbol && s.id !== signal.id);
+      if (existingActive) {
+        logger.info(`⏭️ Skipping duplicate — already have an active signal for ${signal.symbol} (ID: ${existingActive.id})`);
+        db.logActivity('SKIP', `Duplicate signal skipped: ${signal.symbol} (existing ID: ${existingActive.id})`);
+        db.updateSignalStatus.run({ id: signal.id, status: 'DUPLICATE' });
+        return;
+      }
+
       // Execute the trade
       await this.executeTrade(signal);
     } catch (err) {

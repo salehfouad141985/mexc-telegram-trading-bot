@@ -161,7 +161,7 @@ function getStats() {
     openTrades,
     winTrades,
     lossTrades,
-    winRate: totalTrades > 0 ? ((winTrades / (winTrades + lossTrades)) * 100).toFixed(1) : '0.0',
+    winRate: (winTrades + lossTrades) > 0 ? ((winTrades / (winTrades + lossTrades)) * 100).toFixed(1) : '0.0',
     totalPnl: totalPnl.toFixed(4),
     todaySignals,
     todayPnl: todayPnl.toFixed(4),

@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Fix MaxListenersExceededWarning from GramJS library
-require('events').EventEmitter.defaultMaxListeners = 20;
+require('events').EventEmitter.defaultMaxListeners = 50;
 
 // =============================================
 // 🤖 Shaabane Signals Trading Bot
