@@ -72,7 +72,33 @@ async function main() {
   // Step 5: Start Telegram Bot
   logger.info('🤖 Starting Telegram listener...');
   await telegramBot.startBot((signal) => {
-    tradeManager.handleSignal(signal);
+    try {
+      // === CRITICAL: Save signal to database FIRST to get signal.id ===
+      const result = db.insertSignal.run({
+        symbol: signal.symbol,
+        timeframe: signal.timeframe || 'unknown',
+        entry_price: signal.entry,
+        stop_loss: signal.stopLoss || null,
+        tp1: signal.tp1 || null,
+        tp2: signal.tp2 || null,
+        tp3: signal.tp3 || null,
+        tp4: signal.tp4 || null,
+        score: signal.score || 0,
+        setup: signal.setup || '',
+        status: 'NEW',
+        raw_message: signal.raw_message || '',
+        telegram_msg_id: signal.telegram_msg_id || null,
+      });
+
+      // Set the database ID on the signal object
+      signal.id = result.lastInsertRowid;
+      logger.info(`📝 Signal saved to DB with ID: ${signal.id}`);
+      
+      // Now pass to trade manager with proper ID
+      tradeManager.handleSignal(signal);
+    } catch (err) {
+      logger.error('❌ Error saving signal to database', { error: err.message });
+    }
   });
 
   // Step 6: Start Price Monitor
