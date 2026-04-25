@@ -13,8 +13,37 @@ let client = null;
 let onSignalCallback = null;
 let pollingTimer = null;
 let healthCheckTimer = null;
+let retryTimer = null;           // Track retry timer to prevent stacking
 let lastProcessedMsgId = 0;     // Track the last message ID we processed
 let targetEntity = null;         // Cached channel entity
+let retryCount = 0;              // Track retry attempts
+const MAX_RETRIES = 5;           // Max retries before generating a new session
+
+/**
+ * Cleanly disconnect and destroy the existing client
+ */
+async function cleanupClient() {
+  try {
+    if (healthCheckTimer) { clearInterval(healthCheckTimer); healthCheckTimer = null; }
+    if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    
+    if (client) {
+      logger.info('🧹 Cleaning up previous Telegram client connection...');
+      try {
+        await client.disconnect();
+      } catch (e) {
+        // Ignore disconnect errors — we're cleaning up anyway
+      }
+      client = null;
+    }
+    targetEntity = null;
+  } catch (err) {
+    logger.error(`Cleanup error (non-fatal): ${err.message}`);
+    client = null;
+    targetEntity = null;
+  }
+}
 
 /**
  * Helper to update .env with the new session string to avoid re-login
@@ -147,11 +176,14 @@ async function startBot(onSignal) {
     return;
   }
 
+  // === CRITICAL: Clean up any existing client before creating a new one ===
+  await cleanupClient();
+
   const stringSession = new StringSession(config.telegram.stringSession);
 
   client = new TelegramClient(stringSession, config.telegram.apiId, config.telegram.apiHash, {
-    connectionRetries: 20,
-    retryDelay: 2000,
+    connectionRetries: 5,
+    retryDelay: 3000,
     autoReconnect: true,
     useWSS: true,
     floodSleepThreshold: 60,
@@ -168,6 +200,7 @@ async function startBot(onSignal) {
     });
 
     logger.info('✅ You are successfully logged in to Telegram!');
+    retryCount = 0; // Reset retry counter on success
     
     // Save the session if it's new
     const sessionString = client.session.save();
@@ -232,9 +265,34 @@ async function startBot(onSignal) {
   } catch (err) {
     logger.error('❌ Failed to connect Telegram UserBot', { error: err.message });
     
-    // Auto-retry after 10 seconds
-    logger.info('🔄 Will retry connection in 10 seconds...');
-    setTimeout(() => startBot(onSignal), 10000);
+    // Clean up the failed client before retrying
+    await cleanupClient();
+    
+    retryCount++;
+    
+    if (err.message && err.message.includes('AUTH_KEY_DUPLICATED')) {
+      logger.error('🔑 AUTH_KEY_DUPLICATED: Your session string is being used elsewhere.');
+      logger.error('   → Make sure NO other instance of this bot is running (locally, other VPS, etc.)');
+      logger.error('   → If the problem persists, you need to generate a NEW session string.');
+      
+      if (retryCount >= MAX_RETRIES) {
+        logger.error(`🛑 Max retries (${MAX_RETRIES}) reached for AUTH_KEY_DUPLICATED. Stopping retries.`);
+        logger.error('   → Please terminate ALL other bot instances, then generate a new session string.');
+        db.logActivity('ERROR', 'AUTH_KEY_DUPLICATED: Max retries reached. Need new session string.');
+        return; // Stop retrying — the session is compromised
+      }
+    }
+    
+    if (retryCount >= MAX_RETRIES) {
+      logger.error(`🛑 Max retries (${MAX_RETRIES}) reached. Giving up.`);
+      db.logActivity('ERROR', 'Telegram connection failed after max retries');
+      return;
+    }
+    
+    // Exponential backoff: 15s, 30s, 60s, 120s, ...
+    const retryDelay = Math.min(15000 * Math.pow(2, retryCount - 1), 120000);
+    logger.info(`🔄 Will retry connection in ${retryDelay / 1000}s... (attempt ${retryCount}/${MAX_RETRIES})`);
+    retryTimer = setTimeout(() => startBot(onSignal), retryDelay);
   }
 }
 
@@ -242,14 +300,8 @@ async function startBot(onSignal) {
  * Stop the Telegram UserBot Client
  */
 async function stopBot() {
-  if (healthCheckTimer) clearInterval(healthCheckTimer);
-  if (pollingTimer) clearInterval(pollingTimer);
-  
-  if (client) {
-    logger.info('🛑 Stopping Telegram UserBot...');
-    await client.disconnect();
-    client = null;
-  }
+  logger.info('🛑 Stopping Telegram UserBot...');
+  await cleanupClient();
 }
 
 module.exports = {
