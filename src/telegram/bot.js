@@ -264,6 +264,15 @@ async function startBot(onSignal) {
     // Start periodic health checks to detect dropped connections
     startHealthCheck();
 
+    // === SELF-TEST: Send a test message to verify event handler works ===
+    try {
+      logger.info('🧪 Running self-test: sending test message to Saved Messages...');
+      await client.sendMessage('me', { message: '🤖 Bot self-test: Event handler verification at ' + new Date().toISOString() });
+      logger.info('🧪 Test message sent. If event handler works, you should see a DEBUG log for it within seconds...');
+    } catch (err) {
+      logger.warn('⚠️ Self-test failed (non-critical)', { error: err.message });
+    }
+
   } catch (err) {
     logger.error('❌ Failed to connect Telegram UserBot', { error: err.message });
     
