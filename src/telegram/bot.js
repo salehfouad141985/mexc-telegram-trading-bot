@@ -194,6 +194,8 @@ async function startBot(onSignal) {
     connectionRetries: 20,
     retryDelay: 2000,
     autoReconnect: true,
+    useWSS: true,           // Use WebSocket Secure (port 443) instead of TCP (port 80) — much more stable on VPS
+    floodSleepThreshold: 60,
   });
 
   logger.info('🤖 Starting Telegram UserBot MTProto connection...');
