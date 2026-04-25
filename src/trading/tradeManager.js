@@ -142,8 +142,12 @@ class TradeManager {
         isDryRun,
       });
 
-      // Step 5: Place SELL orders at TP targets (if entry is filled or dry run)
-      if (isDryRun) {
+      // Step 5: Wait for BUY order to be filled, then place TP SELL orders
+      if (!isDryRun) {
+        // Wait a bit for the order to fill (market buy or limit at current price)
+        logger.info(`⏳ Waiting for BUY order to fill before placing TP orders...`);
+        await this.waitForFillAndPlaceTargets(signal, buyOrderResult.orderId, quantity);
+      } else {
         await this.placeTargetOrders(signal, quantity, isDryRun);
       }
 
@@ -159,8 +163,48 @@ class TradeManager {
     } catch (err) {
       logger.error(`❌ Trade execution failed: ${signal.symbol}`, { error: err.message });
       db.logActivity('ERROR', `Trade failed: ${signal.symbol} - ${err.message}`);
-      db.updateSignalStatus.run({ id: signal.id, status: 'ERROR' });
+      if (signal.id) {
+        db.updateSignalStatus.run({ id: signal.id, status: 'ERROR' });
+      }
     }
+  }
+
+  /**
+   * Wait for buy order to fill, then place TP sell orders
+   */
+  async waitForFillAndPlaceTargets(signal, orderId, quantity) {
+    const maxAttempts = 30;  // Try for up to 5 minutes (30 x 10s)
+    
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const orderStatus = await mexcClient.getOrder(signal.symbol, orderId);
+        
+        if (orderStatus.status === 'FILLED' || orderStatus.status === 'PARTIALLY_FILLED') {
+          const filledQty = parseFloat(orderStatus.executedQty) || quantity;
+          logger.info(`✅ BUY order FILLED! Qty: ${filledQty} — Now placing TP SELL orders...`);
+          db.logActivity('FILLED', `BUY filled: ${signal.symbol} Qty: ${filledQty}`);
+          
+          // Place TP sell orders with the filled quantity
+          await this.placeTargetOrders(signal, filledQty, false);
+          return;
+        } else if (orderStatus.status === 'CANCELED' || orderStatus.status === 'REJECTED') {
+          logger.warn(`⚠️ BUY order ${orderStatus.status} — no TP orders will be placed`);
+          db.updateSignalStatus.run({ id: signal.id, status: orderStatus.status });
+          return;
+        }
+        
+        // Order still pending, wait 10 seconds
+        if (i < maxAttempts - 1) {
+          await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+      } catch (err) {
+        logger.error(`Error checking buy order status (attempt ${i+1})`, { error: err.message });
+      }
+    }
+    
+    // If we get here, order didn't fill in time — place TP orders anyway with original quantity
+    logger.warn(`⚠️ BUY order not confirmed filled after ${maxAttempts} attempts — placing TP orders with original qty`);
+    await this.placeTargetOrders(signal, quantity, false);
   }
 
   /**
