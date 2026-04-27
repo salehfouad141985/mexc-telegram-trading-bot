@@ -58,9 +58,40 @@ async function checkPrices() {
       const currentPrice = await mexcClient.getSymbolPrice(signal.symbol);
       if (!currentPrice) continue;
 
+      // Initialize tracking set for this signal if not exists
+      if (!loggedTPReached.has(signal.id)) {
+        loggedTPReached.set(signal.id, new Set());
+      }
+      const logged = loggedTPReached.get(signal.id);
+
+      // Calculate Trailing Stop Loss
+      let dynamicSL = signal.stop_loss;
+      
+      // Get DB trades to check for filled TPs robustly
+      const trades = db.getTradesBySignalId.all(signal.id);
+      const filledTPLabels = trades
+        .filter(t => t.side === 'SELL' && t.status === 'FILLED' && t.target_label && t.target_label.startsWith('TP'))
+        .map(t => t.target_label);
+
+      // Evaluate the highest TP reached
+      const hasTP4 = logged.has('TP4') || filledTPLabels.includes('TP4');
+      const hasTP3 = logged.has('TP3') || filledTPLabels.includes('TP3');
+      const hasTP2 = logged.has('TP2') || filledTPLabels.includes('TP2');
+      const hasTP1 = logged.has('TP1') || filledTPLabels.includes('TP1');
+
+      if (hasTP4 && signal.tp3) {
+        dynamicSL = signal.tp3;
+      } else if (hasTP3 && signal.tp2) {
+        dynamicSL = signal.tp2;
+      } else if (hasTP2 && signal.tp1) {
+        dynamicSL = signal.tp1;
+      } else if (hasTP1 && signal.entry_price) {
+        dynamicSL = signal.entry_price;
+      }
+
       // Check Stop Loss
-      if (signal.stop_loss && currentPrice <= signal.stop_loss) {
-        logger.warn(`🔴 STOP LOSS triggered: ${signal.symbol} @ $${currentPrice} (SL: $${signal.stop_loss})`);
+      if (dynamicSL && currentPrice <= dynamicSL) {
+        logger.warn(`🔴 Trailing STOP LOSS triggered: ${signal.symbol} @ $${currentPrice} (Dynamic SL: $${dynamicSL})`);
         await handleStopLoss(signal, currentPrice);
         continue; // Don't check TPs if SL was triggered
       }
@@ -72,12 +103,6 @@ async function checkPrices() {
         { label: 'TP3', price: signal.tp3 },
         { label: 'TP4', price: signal.tp4 },
       ];
-
-      // Initialize tracking set for this signal if not exists
-      if (!loggedTPReached.has(signal.id)) {
-        loggedTPReached.set(signal.id, new Set());
-      }
-      const logged = loggedTPReached.get(signal.id);
 
       for (const tp of targets) {
         if (tp.price && currentPrice >= tp.price && !logged.has(tp.label)) {

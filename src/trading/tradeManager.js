@@ -212,9 +212,8 @@ class TradeManager {
       }
     }
     
-    // If we get here, order didn't fill in time — place TP orders anyway with original quantity
-    logger.warn(`⚠️ BUY order not confirmed filled after ${maxAttempts} attempts — placing TP orders with original qty`);
-    await this.placeTargetOrders(signal, quantity, false);
+    // If we get here, order didn't fill in time — DO NOT place TP orders anymore!
+    logger.warn(`⚠️ BUY order not confirmed filled after ${maxAttempts} attempts — waiting for checkOpenOrders to handle it.`);
   }
 
   /**
@@ -322,6 +321,17 @@ class TradeManager {
           const emoji = pnl >= 0 ? '🟢' : '🔴';
           logger.info(`${emoji} Order FILLED: ${trade.target_label} ${trade.symbol} @ $${executedPrice} | P&L: $${pnl.toFixed(4)}`);
           db.logActivity('FILLED', `${trade.target_label} filled: ${trade.symbol} P&L: $${pnl.toFixed(4)}`);
+
+          if (trade.side === 'BUY' && trade.target_label === 'ENTRY') {
+            const existingTPs = db.getTradesBySignalId.all(trade.signal_id).filter(t => t.side === 'SELL');
+            if (existingTPs.length === 0) {
+              const signal = db.getSignalById.get(trade.signal_id);
+              if (signal) {
+                logger.info(`🔄 Delayed ENTRY order filled for ${trade.symbol}. Placing TP orders...`);
+                await this.placeTargetOrders(signal, executedQty, false);
+              }
+            }
+          }
         } else if (orderStatus.status === 'CANCELED') {
           db.updateTradeStatus.run({
             id: trade.id,
