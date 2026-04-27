@@ -83,17 +83,33 @@ class TradeManager {
         }
       }
 
-      // Step 3: Calculate quantity
-      let quantity, currentPrice;
+      // Step 3: Get current price and validate tolerance
+      let currentPrice;
       if (!isDryRun) {
+        currentPrice = await mexcClient.getSymbolPrice(signal.symbol);
+      } else {
+        currentPrice = await mexcClient.getSymbolPrice(signal.symbol);
+        if (!currentPrice) currentPrice = signal.entry;
+      }
+      
+      const maxAllowedPrice = signal.entry * 1.005; // 0.5% above entry
+      
+      if (currentPrice > maxAllowedPrice) {
+        logger.warn(`⚠️ Current price ($${currentPrice}) is > 0.5% above entry ($${signal.entry}). Skipping trade for ${signal.symbol}.`);
+        db.logActivity('SKIP', `Price too high: ${signal.symbol} @ $${currentPrice} (max: $${maxAllowedPrice.toFixed(4)})`);
+        db.updateSignalStatus.run({ id: signal.id, status: 'SKIPPED_HIGH_PRICE' });
+        return;
+      }
+
+      // Step 4: Calculate exact quantity based on current market price
+      let quantity;
+      if (!isDryRun) {
+        // Estimate quantity using current price for database tracking
         const calcResult = await mexcClient.calculateQuantity(signal.symbol, tradeAmount);
         quantity = calcResult.quantity;
-        currentPrice = calcResult.price;
       } else {
-        // Dry run: simulate
-        currentPrice = signal.entry;
-        quantity = tradeAmount / signal.entry;
-        quantity = Math.floor(quantity * 100) / 100; // 2 decimal places
+        quantity = tradeAmount / currentPrice;
+        quantity = Math.floor(quantity * 100) / 100;
       }
 
       if (!quantity || quantity <= 0) {
@@ -102,24 +118,23 @@ class TradeManager {
         return;
       }
 
-      // Step 4: Place BUY order at entry price
+      // Step 5: Place MARKET BUY order
       let buyOrderResult;
       if (!isDryRun) {
         buyOrderResult = await mexcClient.createOrder({
           symbol: signal.symbol,
           side: 'BUY',
-          type: 'LIMIT',
-          quantity: quantity,
-          price: signal.entry,
+          type: 'MARKET',
+          quoteOrderQty: tradeAmount, // Use quoteOrderQty for MARKET BUY on MEXC
         });
       } else {
         // Simulate order
         buyOrderResult = {
           symbol: signal.symbol,
           orderId: `DRY_${Date.now()}`,
-          price: signal.entry.toString(),
+          price: currentPrice.toString(),
           origQty: quantity.toString(),
-          type: 'LIMIT',
+          type: 'MARKET',
           side: 'BUY',
           status: 'NEW',
         };
@@ -130,9 +145,9 @@ class TradeManager {
         signal_id: signal.id,
         symbol: signal.symbol,
         side: 'BUY',
-        type: 'LIMIT',
+        type: 'MARKET',
         quantity: quantity,
-        price: signal.entry,
+        price: currentPrice,
         order_id: buyOrderResult.orderId || `DRY_${Date.now()}`,
         mexc_order_id: buyOrderResult.orderId || null,
         status: isDryRun ? 'SIMULATED' : 'PENDING',
