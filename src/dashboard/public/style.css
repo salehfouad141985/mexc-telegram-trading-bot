@@ -876,6 +876,26 @@ input:checked + .slider:before {
   cursor: not-allowed;
 }
 
+.realized-pnl-small {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.signal-floating-pnl {
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.signal-floating-pnl .small {
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
 /* ===== Toast Notifications ===== */
 .toast {
   position: fixed;

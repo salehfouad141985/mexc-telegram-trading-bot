@@ -108,15 +108,22 @@ async function fetchStats() {
   document.getElementById('lossCount').textContent = data.lossTrades;
 
   const pnlEl = document.getElementById('totalPnl');
-  const pnlVal = parseFloat(data.totalPnl);
-  pnlEl.textContent = `$${pnlVal.toFixed(2)}`;
+  const realizedPnl = parseFloat(data.totalPnl || 0);
+  const floatingPnl = parseFloat(data.floatingPnl || 0);
+  const realTimePnl = parseFloat(data.realTimePnl || 0);
+  
+  pnlEl.textContent = `$${realTimePnl.toFixed(2)}`;
   pnlEl.classList.remove('positive', 'negative');
-  pnlEl.classList.add(pnlVal >= 0 ? 'positive' : 'negative');
+  pnlEl.classList.add(realTimePnl >= 0 ? 'positive' : 'negative');
 
-  document.getElementById('todayPnl').textContent = `اليوم: $${parseFloat(data.todayPnl).toFixed(2)}`;
+  const floatingEl = document.getElementById('floatingPnlDisplay');
+  floatingEl.textContent = `غير محقق: $${floatingPnl.toFixed(2)}`;
+  floatingEl.className = 'stat-trend ' + (floatingPnl >= 0 ? 'text-emerald' : 'text-rose');
+
+  document.getElementById('realizedPnlDisplay').textContent = `المحقق: $${realizedPnl.toFixed(2)}`;
 
   // Update PnL History for Sparkline
-  pnlHistory.push(pnlVal);
+  pnlHistory.push(realTimePnl);
   if (pnlHistory.length > 20) pnlHistory.shift();
   drawSparkline('pnlSparkline', pnlHistory);
 
@@ -346,11 +353,22 @@ function renderSignalCard(signal) {
     hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric'
   });
 
+  const floatingPnlHtml = signal.floating_pnl_percent ? `
+    <div class="signal-floating-pnl ${parseFloat(signal.floating_pnl_percent) >= 0 ? 'text-emerald' : 'text-rose'}">
+      <i class="fas ${parseFloat(signal.floating_pnl_percent) >= 0 ? 'fa-caret-up' : 'fa-caret-down'}"></i>
+      <span>${parseFloat(signal.floating_pnl_percent) >= 0 ? '+' : ''}${signal.floating_pnl_percent}%</span>
+      <span class="small">($${signal.floating_pnl_usdt})</span>
+    </div>
+  ` : '';
+
   return `
     <div class="signal-card">
       <div class="signal-top">
         <span class="signal-symbol">${signal.symbol}</span>
-        <span class="signal-score ${scoreClass}"><i class="fas fa-star"></i> ${signal.score || '—'}</span>
+        <div class="flex-column align-end">
+          <span class="signal-score ${scoreClass}"><i class="fas fa-star"></i> ${signal.score || '—'}</span>
+          ${floatingPnlHtml}
+        </div>
       </div>
       <div class="signal-prices">
         <div class="price-item">
@@ -358,12 +376,12 @@ function renderSignalCard(signal) {
           <span class="price-value">$${signal.entry_price}</span>
         </div>
         <div class="price-item">
-          <span class="price-label">وقف الخسارة</span>
-          <span class="price-value text-rose">$${signal.stop_loss || '—'}</span>
+          <span class="price-label">السعر الحالي</span>
+          <span class="price-value ${parseFloat(signal.floating_pnl_percent) >= 0 ? 'text-emerald' : 'text-rose'}">$${signal.current_price || '—'}</span>
         </div>
         <div class="price-item">
-          <span class="price-label">الإطار</span>
-          <span class="price-value">${signal.timeframe || '—'}</span>
+          <span class="price-label">وقف الخسارة</span>
+          <span class="price-value text-rose">$${signal.stop_loss || '—'}</span>
         </div>
       </div>
       <div class="target-pills">

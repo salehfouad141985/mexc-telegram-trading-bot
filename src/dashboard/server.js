@@ -3,12 +3,47 @@ const path = require('path');
 const config = require('../config');
 const logger = require('../utils/logger');
 const db = require('../database/db');
+const MexcClient = require('../exchange/mexcClient');
+const mexc = new MexcClient();
 
 const app = express();
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+
+// Helper to get real-time prices for active signals
+async function enrichWithRealtimeData(signals) {
+  if (!signals || signals.length === 0) return 0;
+  
+  try {
+    const pricesData = await mexc.getAllPrices();
+    const priceMap = new Map(pricesData.map(p => [p.symbol, parseFloat(p.price)]));
+    
+    let totalFloatingPnl = 0;
+    const amount = parseFloat(config.trading.tradeAmountUsdt) || 10;
+
+    signals.forEach(sig => {
+      const currentPrice = priceMap.get(sig.symbol);
+      if (currentPrice && sig.entry_price) {
+        const pnlPercent = ((currentPrice - sig.entry_price) / sig.entry_price) * 100;
+        const pnlUsdt = (pnlPercent / 100) * amount;
+        
+        sig.current_price = currentPrice;
+        sig.floating_pnl_percent = pnlPercent.toFixed(2);
+        sig.floating_pnl_usdt = pnlUsdt.toFixed(2);
+        
+        if (sig.status === 'ACTIVE' || sig.status === 'PARTIALLY_FILLED' || sig.status === 'NEW') {
+           totalFloatingPnl += pnlUsdt;
+        }
+      }
+    });
+    return totalFloatingPnl;
+  } catch (err) {
+    logger.error('PnL enrichment failed', err);
+    return 0;
+  }
+}
 
 // ========================
 // API Routes
@@ -18,6 +53,12 @@ app.use(express.json());
 app.get('/api/stats', async (req, res) => {
   try {
     const stats = await db.getStats();
+    const activeSignals = await db.getActiveSignals();
+    const floatingPnl = await enrichWithRealtimeData(activeSignals);
+    
+    stats.floatingPnl = floatingPnl.toFixed(4);
+    stats.realTimePnl = (parseFloat(stats.totalPnl) + floatingPnl).toFixed(4);
+    
     stats.dryRun = config.trading.dryRun;
     stats.autoTrade = config.trading.autoTrade;
     stats.tradeAmount = config.trading.tradeAmountUsdt;
@@ -43,6 +84,7 @@ app.get('/api/signals', async (req, res) => {
 app.get('/api/signals/active', async (req, res) => {
   try {
     const signals = await db.getActiveSignals();
+    await enrichWithRealtimeData(signals);
     res.json(signals);
   } catch (err) {
     res.status(500).json({ error: err.message });
