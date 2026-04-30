@@ -139,8 +139,7 @@ app.get('/api/balance', async (req, res) => {
     if (config.trading.dryRun) {
       return res.json({ free: '1000.00', locked: '0.00', isDryRun: true });
     }
-    const mexcClient = require('../exchange/mexcClient');
-    const balance = await mexcClient.getUsdtBalance();
+    const balance = await mexc.getUsdtBalance();
     res.json({ ...balance, isDryRun: false });
   } catch (err) {
     res.status(500).json({ error: err.message });
