@@ -221,42 +221,70 @@
         <div class="glass-card full-width mt-24" id="settingsView">
           <div class="card-header">
             <h4 class="card-title"><i class="fas fa-sliders-h"></i> إعدادات التداول</h4>
+            <button class="premium-btn" onclick="saveSettings()" id="saveSettingsBtn">
+              <i class="fas fa-save"></i> حفظ التغييرات
+            </button>
           </div>
           <div class="card-content">
-            <div class="settings-modern-grid">
-              <div class="setting-card">
-                <span class="label">وضع التشغيل</span>
-                <div class="value" id="settingDryRun">—</div>
+            <form id="settingsForm" onsubmit="event.preventDefault()">
+              <div class="settings-modern-grid">
+                <div class="setting-card">
+                  <span class="label">وضع التشغيل (Dry Run)</span>
+                  <div class="input-wrapper">
+                    <select id="inputDryRun" class="premium-input">
+                      <option value="true">تجريبي (Test Mode)</option>
+                      <option value="false">حقيقي (Live Mode)</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="setting-card">
+                  <span class="label">التداول التلقائي</span>
+                  <div class="input-wrapper">
+                    <label class="switch">
+                      <input type="checkbox" id="inputAutoTrade">
+                      <span class="slider round"></span>
+                    </label>
+                    <span class="status-text" id="autoTradeStatus">مفعل</span>
+                  </div>
+                </div>
+                <div class="setting-card">
+                  <span class="label">المبلغ لكل صفقة (USDT)</span>
+                  <div class="input-wrapper">
+                    <input type="number" id="inputAmount" class="premium-input" placeholder="10">
+                  </div>
+                </div>
+                <div class="setting-card">
+                  <span class="label">حد أدنى Score لقوة الإشارة</span>
+                  <div class="input-wrapper">
+                    <input type="number" id="inputMinScore" class="premium-input" placeholder="7">
+                  </div>
+                </div>
+                <div class="setting-card">
+                  <span class="label">توزيع الأهداف (TP1 %)</span>
+                  <div class="input-wrapper">
+                    <input type="number" id="inputTP1" class="premium-input" placeholder="30">
+                  </div>
+                </div>
+                <div class="setting-card">
+                  <span class="label">توزيع الأهداف (TP2 %)</span>
+                  <div class="input-wrapper">
+                    <input type="number" id="inputTP2" class="premium-input" placeholder="30">
+                  </div>
+                </div>
+                <div class="setting-card">
+                  <span class="label">توزيع الأهداف (TP3 %)</span>
+                  <div class="input-wrapper">
+                    <input type="number" id="inputTP3" class="premium-input" placeholder="25">
+                  </div>
+                </div>
+                <div class="setting-card">
+                  <span class="label">توزيع الأهداف (TP4 %)</span>
+                  <div class="input-wrapper">
+                    <input type="number" id="inputTP4" class="premium-input" placeholder="15">
+                  </div>
+                </div>
               </div>
-              <div class="setting-card">
-                <span class="label">التداول التلقائي</span>
-                <div class="value" id="settingAutoTrade">—</div>
-              </div>
-              <div class="setting-card">
-                <span class="label">المبلغ لكل صفقة</span>
-                <div class="value" id="settingAmount">—</div>
-              </div>
-              <div class="setting-card">
-                <span class="label">حد أدنى Score</span>
-                <div class="value" id="settingMinScore">—</div>
-              </div>
-              <div class="setting-card">
-                <span class="label">TP1 %</span>
-                <div class="value" id="settingTP1">—</div>
-              </div>
-              <div class="setting-card">
-                <span class="label">TP2 %</span>
-                <div class="value" id="settingTP2">—</div>
-              </div>
-              <div class="setting-card">
-                <span class="label">TP3 %</span>
-                <div class="value" id="settingTP3">—</div>
-              </div>
-              <div class="setting-card">
-                <span class="label">TP4 %</span>
-                <div class="value" id="settingTP4">—</div>
-              </div>
-            </div>
+            </form>
           </div>
         </div>
       </main>

@@ -46,4 +46,37 @@ const config = {
   },
 };
 
+/**
+ * Dynamically reload settings from database
+ */
+async function reloadConfig() {
+  try {
+    const db = require('./database/db');
+    const settings = await db.getSettings();
+    
+    if (!settings || settings.length === 0) return;
+
+    settings.forEach(setting => {
+      const { key, value } = setting;
+      
+      switch (key) {
+        case 'TRADE_AMOUNT_USDT': config.trading.tradeAmountUsdt = parseFloat(value); break;
+        case 'MIN_SCORE': config.trading.minScore = parseFloat(value); break;
+        case 'AUTO_TRADE': config.trading.autoTrade = (value === 'true'); break;
+        case 'DRY_RUN': config.trading.dryRun = (value === 'true'); break;
+        case 'TP1_PERCENT': config.risk.tp1Percent = parseFloat(value); break;
+        case 'TP2_PERCENT': config.risk.tp2Percent = parseFloat(value); break;
+        case 'TP3_PERCENT': config.risk.tp3Percent = parseFloat(value); break;
+        case 'TP4_PERCENT': config.risk.tp4Percent = parseFloat(value); break;
+      }
+    });
+    
+    console.log('✅ Config reloaded from database');
+  } catch (err) {
+    console.error('❌ Failed to reload config:', err.message);
+  }
+}
+
+config.reload = reloadConfig;
+
 module.exports = config;

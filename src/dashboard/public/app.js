@@ -15,9 +15,21 @@ let lastStats = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
+  initSettingsListeners();
   fetchAll();
   setInterval(fetchAll, POLL_INTERVAL);
 });
+
+function initSettingsListeners() {
+  const toggle = document.getElementById('inputAutoTrade');
+  if (toggle) {
+    toggle.addEventListener('change', () => {
+      const statusText = document.getElementById('autoTradeStatus');
+      statusText.textContent = toggle.checked ? 'مفعل' : 'معطل';
+      statusText.className = 'status-text ' + (toggle.checked ? 'text-emerald' : 'text-rose');
+    });
+  }
+}
 
 function initNavigation() {
   const navLinks = document.querySelectorAll('.nav-link');
@@ -203,21 +215,86 @@ async function fetchConfig() {
     const res = await fetch(`${API_BASE}/api/config`);
     const cfg = await res.json();
 
-    const dryEl = document.getElementById('settingDryRun');
-    dryEl.textContent = cfg.dryRun ? 'تجريبي (Dry Run)' : 'حقيقي (Live)';
-    dryEl.className = 'value ' + (cfg.dryRun ? 'text-warning' : 'pnl-negative');
+    // Populate form inputs
+    const dryRunInput = document.getElementById('inputDryRun');
+    if (dryRunInput) dryRunInput.value = String(cfg.dryRun);
 
-    const autoEl = document.getElementById('settingAutoTrade');
-    autoEl.textContent = cfg.autoTrade ? 'مفعّل ✅' : 'معطّل ❌';
-    autoEl.style.color = cfg.autoTrade ? 'var(--accent-emerald)' : 'var(--accent-rose)';
+    const autoTradeInput = document.getElementById('inputAutoTrade');
+    if (autoTradeInput) {
+      autoTradeInput.checked = cfg.autoTrade;
+      document.getElementById('autoTradeStatus').textContent = cfg.autoTrade ? 'مفعل' : 'معطل';
+      document.getElementById('autoTradeStatus').className = 'status-text ' + (cfg.autoTrade ? 'text-emerald' : 'text-rose');
+    }
 
-    document.getElementById('settingAmount').textContent = `${cfg.tradeAmountUsdt} USDT`;
-    document.getElementById('settingMinScore').textContent = `${cfg.minScore} / 10`;
-    document.getElementById('settingTP1').textContent = `${cfg.tp1Percent}%`;
-    document.getElementById('settingTP2').textContent = `${cfg.tp2Percent}%`;
-    document.getElementById('settingTP3').textContent = `${cfg.tp3Percent}%`;
-    document.getElementById('settingTP4').textContent = `${cfg.tp4Percent}%`;
+    const amountInput = document.getElementById('inputAmount');
+    if (amountInput) amountInput.value = cfg.tradeAmountUsdt;
+
+    const minScoreInput = document.getElementById('inputMinScore');
+    if (minScoreInput) minScoreInput.value = cfg.minScore;
+
+    const tp1Input = document.getElementById('inputTP1');
+    if (tp1Input) tp1Input.value = cfg.tp1Percent;
+    
+    const tp2Input = document.getElementById('inputTP2');
+    if (tp2Input) tp2Input.value = cfg.tp2Percent;
+
+    const tp3Input = document.getElementById('inputTP3');
+    if (tp3Input) tp3Input.value = cfg.tp3Percent;
+
+    const tp4Input = document.getElementById('inputTP4');
+    if (tp4Input) tp4Input.value = cfg.tp4Percent;
+
   } catch (e) { console.error(e); }
+}
+
+async function saveSettings() {
+  const btn = document.getElementById('saveSettingsBtn');
+  const originalHtml = btn.innerHTML;
+  
+  try {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الحفظ...';
+
+    const settings = {
+      DRY_RUN: document.getElementById('inputDryRun').value,
+      AUTO_TRADE: document.getElementById('inputAutoTrade').checked ? 'true' : 'false',
+      TRADE_AMOUNT_USDT: document.getElementById('inputAmount').value,
+      MIN_SCORE: document.getElementById('inputMinScore').value,
+      TP1_PERCENT: document.getElementById('inputTP1').value,
+      TP2_PERCENT: document.getElementById('inputTP2').value,
+      TP3_PERCENT: document.getElementById('inputTP3').value,
+      TP4_PERCENT: document.getElementById('inputTP4').value,
+    };
+
+    const res = await fetch(`${API_BASE}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings)
+    });
+
+    const result = await res.json();
+    if (result.success) {
+      btn.innerHTML = '<i class="fas fa-check"></i> تم الحفظ بنجاح!';
+      btn.style.background = 'var(--accent-emerald)';
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        btn.style.background = '';
+        fetchAll(); // Refresh everything
+      }, 2000);
+    } else {
+      throw new Error(result.error || 'Failed to save');
+    }
+  } catch (err) {
+    console.error('Save error:', err);
+    btn.innerHTML = '<i class="fas fa-times"></i> خطأ في الحفظ';
+    btn.style.background = 'var(--accent-rose)';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+      btn.style.background = '';
+    }, 3000);
+  }
 }
 
 // ===========================

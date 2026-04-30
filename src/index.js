@@ -34,6 +34,9 @@ async function main() {
   logger.info('🔄 Initializing database...');
   await db.initDatabase();
 
+  // Load dynamic settings from DB
+  await config.reload();
+
   // Step 2: Show config summary
   logger.info('⚙️ Configuration:', {
     dryRun: config.trading.dryRun,

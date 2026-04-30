@@ -252,6 +252,36 @@ async function getStats() {
   }
 }
 
+/**
+ * Get all bot settings
+ */
+async function getSettings() {
+  const { data, error } = await supabase
+    .from('bot_settings')
+    .select('*');
+  
+  if (error) {
+    logger.error('Error fetching settings:', error);
+    return [];
+  }
+  return data;
+}
+
+/**
+ * Update a specific setting
+ */
+async function updateSetting(key, value) {
+  const { error } = await supabase
+    .from('bot_settings')
+    .upsert({ key, value: String(value), updated_at: new Date() });
+  
+  if (error) {
+    logger.error(`Error updating setting ${key}:`, error);
+    throw error;
+  }
+  return true;
+}
+
 module.exports = {
   supabase,
   initDatabase,
@@ -274,4 +304,7 @@ module.exports = {
   getRecentActivities,
   // Stats
   getStats,
+  // Settings
+  getSettings,
+  updateSetting,
 };

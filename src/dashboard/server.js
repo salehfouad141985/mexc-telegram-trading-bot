@@ -119,6 +119,27 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Update settings
+app.post('/api/settings', async (req, res) => {
+  try {
+    const settings = req.body;
+    
+    // Update each setting in DB
+    for (const [key, value] of Object.entries(settings)) {
+      await db.updateSetting(key, value);
+    }
+    
+    // Reload config in memory
+    await config.reload();
+    
+    await db.logActivity('SYSTEM', 'Bot settings updated via dashboard');
+    res.json({ success: true, message: 'Settings updated successfully' });
+  } catch (err) {
+    logger.error('Failed to update settings:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Serve dashboard
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
