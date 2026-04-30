@@ -3,8 +3,7 @@ const path = require('path');
 const config = require('../config');
 const logger = require('../utils/logger');
 const db = require('../database/db');
-const MexcClient = require('../exchange/mexcClient');
-const mexc = new MexcClient();
+const mexc = require('../exchange/mexcClient');
 
 const app = express();
 
