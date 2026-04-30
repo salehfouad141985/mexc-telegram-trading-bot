@@ -132,6 +132,14 @@ app.post('/api/settings', async (req, res) => {
     // Reload config in memory
     await config.reload();
     
+    // Sync bot state (start/stop monitors)
+    try {
+      const { syncBotState } = require('../index');
+      await syncBotState();
+    } catch (syncErr) {
+      logger.error('Failed to sync bot state after settings update', syncErr);
+    }
+    
     await db.logActivity('SYSTEM', 'Bot settings updated via dashboard');
     res.json({ success: true, message: 'Settings updated successfully' });
   } catch (err) {

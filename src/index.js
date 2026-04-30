@@ -105,15 +105,41 @@ async function main() {
   });
 
   // Step 6: Start Price Monitor
-  if (config.trading.autoTrade && !config.trading.dryRun) {
-    await priceMonitor.startMonitoring();
-  }
+  await syncBotState();
 
   // Graceful shutdown
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
   logger.info('🚀 Bot is running! Waiting for signals...');
+}
+
+/**
+ * Synchronize bot components with current config
+ */
+async function syncBotState() {
+  const isLive = !config.trading.dryRun;
+  const isAuto = config.trading.autoTrade;
+
+  logger.info(`🔄 Bot State Sync: | Mode: ${isLive ? 'LIVE 💰' : 'DRY RUN 🧪'} | AutoTrade: ${isAuto ? 'ON' : 'OFF'}`);
+
+  // If switching to LIVE, check MEXC connectivity if not already done
+  if (isLive && config.mexc.apiKey) {
+    try {
+      const mexc = require('./exchange/mexcClient');
+      await mexc.ping();
+      const balance = await mexc.getUsdtBalance();
+      logger.info(`✅ MEXC Connectivity confirmed. Balance: ${balance.free} USDT`);
+    } catch (err) {
+      logger.warn(`⚠️ MEXC Connectivity check failed: ${err.message}`);
+    }
+  }
+
+  if (isAuto && isLive) {
+    await priceMonitor.startMonitoring();
+  } else {
+    await priceMonitor.stopMonitoring();
+  }
 }
 
 function shutdown() {
@@ -129,3 +155,5 @@ main().catch((err) => {
   logger.error('Fatal error', { error: err.message, stack: err.stack });
   process.exit(1);
 });
+
+module.exports = { syncBotState };
