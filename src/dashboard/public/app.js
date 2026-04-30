@@ -84,7 +84,7 @@ async function fetchAll() {
     }
 
     document.getElementById('lastUpdate').textContent =
-      'آخر تحديث: ' + new Date().toLocaleTimeString('ar-EG');
+      'آخر تحديث: ' + new Date().toLocaleTimeString('en-GB');
   } catch (err) {
     console.error('Fetch error:', err);
   }
@@ -342,7 +342,7 @@ function renderSignalCard(signal) {
   if (signal.tp3) targets.push(`TP3: $${signal.tp3}`);
   if (signal.tp4) targets.push(`TP4: $${signal.tp4}`);
 
-  const time = new Date(signal.created_at).toLocaleString('ar-EG', {
+  const time = new Date(signal.created_at).toLocaleString('en-GB', {
     hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric'
   });
 
@@ -383,7 +383,7 @@ function renderTradeRow(trade) {
   const pnl = parseFloat(trade.pnl || 0);
   const pnlClass = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : '';
 
-  const time = new Date(trade.created_at).toLocaleString('ar-EG', {
+  const time = new Date(trade.created_at).toLocaleString('en-GB', {
     hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric'
   });
 
@@ -404,7 +404,7 @@ function renderTradeRow(trade) {
 
 function renderActivityLine(activity) {
   const typeClass = getActivityTypeClass(activity.type);
-  const time = new Date(activity.created_at).toLocaleTimeString('ar-EG', {
+  const time = new Date(activity.created_at).toLocaleTimeString('en-GB', {
     hour: '2-digit', minute: '2-digit', second: '2-digit'
   });
 
