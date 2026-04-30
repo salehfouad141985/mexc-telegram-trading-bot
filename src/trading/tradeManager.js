@@ -21,25 +21,25 @@ class TradeManager {
       // Check minimum score filter
       if (signal.score && signal.score < config.trading.minScore) {
         logger.info(`⏭️ Signal skipped (score ${signal.score} < ${config.trading.minScore}): ${signal.symbol}`);
-        db.logActivity('SKIP', `Signal skipped (low score): ${signal.symbol} Score: ${signal.score}`);
-        db.updateSignalStatus.run({ id: signal.id, status: 'SKIPPED' });
+        await db.logActivity('SKIP', `Signal skipped (low score): ${signal.symbol} Score: ${signal.score}`);
+        await db.updateSignalStatus(signal.id, 'SKIPPED');
         return;
       }
 
       // Check auto trade is enabled
       if (!config.trading.autoTrade) {
         logger.info(`⏸️ Auto trade disabled. Signal saved: ${signal.symbol}`);
-        db.logActivity('SAVED', `Signal saved (auto trade off): ${signal.symbol}`);
+        await db.logActivity('SAVED', `Signal saved (auto trade off): ${signal.symbol}`);
         return;
       }
 
       // Check if we already have an active signal for this symbol
-      const activeSignals = db.getActiveSignals.all();
+      const activeSignals = await db.getActiveSignals();
       const existingActive = activeSignals.find(s => s.symbol === signal.symbol && s.id !== signal.id);
       if (existingActive) {
         logger.info(`⏭️ Skipping duplicate — already have an active signal for ${signal.symbol} (ID: ${existingActive.id})`);
-        db.logActivity('SKIP', `Duplicate signal skipped: ${signal.symbol} (existing ID: ${existingActive.id})`);
-        db.updateSignalStatus.run({ id: signal.id, status: 'DUPLICATE' });
+        await db.logActivity('SKIP', `Duplicate signal skipped: ${signal.symbol} (existing ID: ${existingActive.id})`);
+        await db.updateSignalStatus(signal.id, 'DUPLICATE');
         return;
       }
 
@@ -47,7 +47,7 @@ class TradeManager {
       await this.executeTrade(signal);
     } catch (err) {
       logger.error('❌ Error handling signal', { error: err.message, signal: signal.symbol });
-      db.logActivity('ERROR', `Failed to handle signal: ${signal.symbol} - ${err.message}`);
+      await db.logActivity('ERROR', `Failed to handle signal: ${signal.symbol} - ${err.message}`);
     }
   }
 
@@ -70,8 +70,8 @@ class TradeManager {
         const isAvailable = await mexcClient.isSymbolAvailable(signal.symbol);
         if (!isAvailable) {
           logger.warn(`⚠️ Symbol not available on MEXC: ${signal.symbol}`);
-          db.logActivity('UNAVAILABLE', `Symbol not on MEXC: ${signal.symbol}`);
-          db.updateSignalStatus.run({ id: signal.id, status: 'UNAVAILABLE' });
+          await db.logActivity('UNAVAILABLE', `Symbol not on MEXC: ${signal.symbol}`);
+          await db.updateSignalStatus(signal.id, 'UNAVAILABLE');
           return;
         }
       }
@@ -81,8 +81,8 @@ class TradeManager {
         const balance = await mexcClient.getUsdtBalance();
         if (balance.free < tradeAmount) {
           logger.warn(`⚠️ Insufficient USDT balance: ${balance.free} < ${tradeAmount}`);
-          db.logActivity('INSUFFICIENT', `Insufficient balance: ${balance.free} USDT`);
-          db.updateSignalStatus.run({ id: signal.id, status: 'INSUFFICIENT_BALANCE' });
+          await db.logActivity('INSUFFICIENT', `Insufficient balance: ${balance.free} USDT`);
+          await db.updateSignalStatus(signal.id, 'INSUFFICIENT_BALANCE');
           return;
         }
       }
@@ -108,8 +108,8 @@ class TradeManager {
             const msg = `⚠️ High spread detected for ${signal.symbol}: ${spread.toFixed(2)}% > ${config.trading.maxSpreadPercent}%`;
             logger.warn(msg);
             notifier.sendNotification(msg);
-            db.logActivity('SKIP', `High spread: ${signal.symbol} ${spread.toFixed(2)}%`);
-            db.updateSignalStatus.run({ id: signal.id, status: 'SKIPPED_HIGH_SPREAD' });
+            await db.logActivity('SKIP', `High spread: ${signal.symbol} ${spread.toFixed(2)}%`);
+            await db.updateSignalStatus(signal.id, 'SKIPPED_HIGH_SPREAD');
             return;
           }
           logger.info(`📊 Spread for ${signal.symbol}: ${spread.toFixed(2)}% (OK)`);
@@ -125,8 +125,8 @@ class TradeManager {
         const msg = `⚠️ Current price ($${currentPrice}) is > 0.5% above entry ($${signal.entry}). Skipping ${signal.symbol}.`;
         logger.warn(msg);
         notifier.sendNotification(msg);
-        db.logActivity('SKIP', `Price too high: ${signal.symbol} @ $${currentPrice} (max: $${maxAllowedPrice.toFixed(4)})`);
-        db.updateSignalStatus.run({ id: signal.id, status: 'SKIPPED_HIGH_PRICE' });
+        await db.logActivity('SKIP', `Price too high: ${signal.symbol} @ $${currentPrice} (max: $${maxAllowedPrice.toFixed(4)})`);
+        await db.updateSignalStatus(signal.id, 'SKIPPED_HIGH_PRICE');
         return;
       }
 
@@ -143,7 +143,7 @@ class TradeManager {
 
       if (!quantity || quantity <= 0) {
         logger.warn(`⚠️ Calculated quantity is 0 for ${signal.symbol}`);
-        db.updateSignalStatus.run({ id: signal.id, status: 'INVALID_QUANTITY' });
+        await db.updateSignalStatus(signal.id, 'INVALID_QUANTITY');
         return;
       }
 
@@ -170,7 +170,7 @@ class TradeManager {
       }
 
       // Save entry trade
-      const entryTradeResult = db.insertTrade.run({
+      const entryTradeResult = await db.insertTrade({
         signal_id: signal.id,
         symbol: signal.symbol,
         side: 'BUY',
@@ -183,13 +183,13 @@ class TradeManager {
         target_label: 'ENTRY',
         is_dry_run: isDryRun ? 1 : 0,
       });
-
-      db.updateSignalStatus.run({ id: signal.id, status: 'ACTIVE' });
+ 
+      await db.updateSignalStatus(signal.id, 'ACTIVE');
 
       const msg = `${isDryRun ? '🧪' : '✅'} BUY order placed: ${signal.symbol} | Qty: ${quantity} @ $${signal.entry}`;
       logger.info(msg);
       notifier.sendNotification(msg);
-      db.logActivity('TRADE', msg, {
+      await db.logActivity('TRADE', msg, {
         orderId: buyOrderResult.orderId,
         symbol: signal.symbol,
         quantity,
@@ -218,9 +218,9 @@ class TradeManager {
 
     } catch (err) {
       logger.error(`❌ Trade execution failed: ${signal.symbol}`, { error: err.message });
-      db.logActivity('ERROR', `Trade failed: ${signal.symbol} - ${err.message}`);
+      await db.logActivity('ERROR', `Trade failed: ${signal.symbol} - ${err.message}`);
       if (signal.id) {
-        db.updateSignalStatus.run({ id: signal.id, status: 'ERROR' });
+        await db.updateSignalStatus(signal.id, 'ERROR');
       }
     }
   }
@@ -238,7 +238,7 @@ class TradeManager {
         if (orderStatus.status === 'FILLED' || orderStatus.status === 'PARTIALLY_FILLED') {
           const filledQty = parseFloat(orderStatus.executedQty) || quantity;
           logger.info(`✅ BUY order FILLED! Qty: ${filledQty} — Now placing Stop Loss on exchange...`);
-          db.logActivity('FILLED', `BUY filled: ${signal.symbol} Qty: ${filledQty}`);
+          await db.logActivity('FILLED', `BUY filled: ${signal.symbol} Qty: ${filledQty}`);
           
           // Place Stop Loss order on exchange for the full quantity
           // This ensures capital protection even if the bot goes offline
@@ -249,7 +249,7 @@ class TradeManager {
           return;
         } else if (orderStatus.status === 'CANCELED' || orderStatus.status === 'REJECTED') {
           logger.warn(`⚠️ BUY order ${orderStatus.status} — no TP orders will be placed`);
-          db.updateSignalStatus.run({ id: signal.id, status: orderStatus.status });
+          await db.updateSignalStatus(signal.id, orderStatus.status);
           return;
         }
         
@@ -300,10 +300,10 @@ class TradeManager {
       }
 
       // Save the SL order ID for future tracking/cancellation
-      db.updateSlOrderId.run({ id: signal.id, sl_order_id: slResult.orderId });
+      await db.updateSlOrderId(signal.id, slResult.orderId);
       
       // Also record in trades table for tracking status
-      db.insertTrade.run({
+      await db.insertTrade({
         signal_id: signal.id,
         symbol: signal.symbol,
         side: 'SELL',
@@ -319,7 +319,7 @@ class TradeManager {
 
       const msg = `${isDryRun ? '🧪' : '🛡️'} Exchange Stop Loss placed: ${signal.symbol} @ $${stopPrice}`;
       logger.info(msg);
-      db.logActivity('SL_PLACED', msg);
+      await db.logActivity('SL_PLACED', msg);
       
       return slResult.orderId;
     } catch (err) {
@@ -366,8 +366,8 @@ class TradeManager {
         // Calculate potential PnL
         const pnl = (target.price - signal.entry) * qty;
         const pnlPercent = ((target.price - signal.entry) / signal.entry) * 100;
-
-        db.insertTrade.run({
+ 
+        await db.insertTrade({
           signal_id: signal.id,
           symbol: signal.symbol,
           side: 'SELL',
@@ -383,7 +383,7 @@ class TradeManager {
 
         const msg = `${isDryRun ? '🧪' : '📈'} ${target.label} SELL: ${signal.symbol} | ${qty} @ $${target.price} (P&L: $${pnl.toFixed(4)})`;
         logger.info(msg);
-        db.logActivity('TARGET', msg, {
+        await db.logActivity('TARGET', msg, {
           target: target.label,
           price: target.price,
           qty,
@@ -401,8 +401,8 @@ class TradeManager {
    */
   async checkOpenOrders() {
     if (config.trading.dryRun) return;
-
-    const openTrades = db.getOpenTrades.all();
+ 
+    const openTrades = await db.getOpenTrades();
     for (const trade of openTrades) {
       if (trade.status === 'SIMULATED' || !trade.mexc_order_id) continue;
 
@@ -421,8 +421,7 @@ class TradeManager {
             pnlPercent = ((executedPrice - trade.signal_entry) / trade.signal_entry) * 100;
           }
 
-          db.updateTradeStatus.run({
-            id: trade.id,
+          await db.updateTradeStatus(trade.id, {
             status: 'FILLED',
             executed_price: executedPrice,
             executed_qty: executedQty,
@@ -432,17 +431,18 @@ class TradeManager {
 
           const emoji = pnl >= 0 ? '🟢' : '🔴';
           logger.info(`${emoji} Order FILLED: ${trade.target_label} ${trade.symbol} @ $${executedPrice} | P&L: $${pnl.toFixed(4)}`);
-          db.logActivity('FILLED', `${trade.target_label} filled: ${trade.symbol} P&L: $${pnl.toFixed(4)}`);
+          await db.logActivity('FILLED', `${trade.target_label} filled: ${trade.symbol} P&L: $${pnl.toFixed(4)}`);
 
           if (trade.target_label === 'SL') {
-            db.updateSignalStatus.run({ id: trade.signal_id, status: 'STOPPED' });
+            await db.updateSignalStatus(trade.signal_id, 'STOPPED');
             logger.warn(`🛑 Signal STOPPED due to exchange-side SL hit: ${trade.symbol}`);
           }
 
           if (trade.side === 'BUY' && trade.target_label === 'ENTRY') {
-            const existingTPs = db.getTradesBySignalId.all(trade.signal_id).filter(t => t.side === 'SELL');
+            const allTrades = await db.getTradesBySignalId(trade.signal_id);
+            const existingTPs = allTrades.filter(t => t.side === 'SELL');
             if (existingTPs.length === 0) {
-              const signal = db.getSignalById.get(trade.signal_id);
+              const signal = await db.getSignalById(trade.signal_id);
               if (signal) {
                 logger.info(`🔄 Delayed ENTRY order filled for ${trade.symbol}. Placing TP orders...`);
                 await this.placeTargetOrders(signal, executedQty, false);
@@ -450,8 +450,7 @@ class TradeManager {
             }
           }
         } else if (orderStatus.status === 'CANCELED') {
-          db.updateTradeStatus.run({
-            id: trade.id,
+          await db.updateTradeStatus(trade.id, {
             status: 'CANCELED',
             executed_price: 0,
             executed_qty: 0,

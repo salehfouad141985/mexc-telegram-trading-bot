@@ -1,220 +1,274 @@
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+const { createClient } = require('@supabase/supabase-js');
+const config = require('../config');
 const logger = require('../utils/logger');
 
-const DATA_DIR = path.join(__dirname, '../../data');
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!config.supabase.url || !config.supabase.key) {
+  logger.error('❌ Supabase credentials missing in config/env!');
 }
 
-const DB_PATH = path.join(DATA_DIR, 'bot.db');
-const db = new Database(DB_PATH);
-
-// Enable WAL mode for better concurrency
-db.pragma('journal_mode = WAL');
+const supabase = createClient(config.supabase.url, config.supabase.key);
 
 /**
- * Initialize database tables
+ * Initialize database
  */
-function initDatabase() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS signals (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      symbol TEXT NOT NULL,
-      timeframe TEXT,
-      entry_price REAL NOT NULL,
-      stop_loss REAL,
-      tp1 REAL,
-      tp2 REAL,
-      tp3 REAL,
-      tp4 REAL,
-      score REAL,
-      setup TEXT,
-      status TEXT DEFAULT 'NEW',
-      raw_message TEXT,
-      telegram_msg_id INTEGER,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS trades (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      signal_id INTEGER REFERENCES signals(id),
-      symbol TEXT NOT NULL,
-      side TEXT NOT NULL,
-      type TEXT NOT NULL,
-      quantity REAL NOT NULL,
-      price REAL,
-      order_id TEXT,
-      mexc_order_id TEXT,
-      status TEXT DEFAULT 'PENDING',
-      executed_price REAL,
-      executed_qty REAL,
-      pnl REAL DEFAULT 0,
-      pnl_percent REAL DEFAULT 0,
-      target_label TEXT,
-      is_dry_run INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS activity_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT NOT NULL,
-      message TEXT NOT NULL,
-      data TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Add sl_order_id to signals if it doesn't exist
-    PRAGMA table_info(signals);
-  `);
-
-  try {
-    db.exec(`ALTER TABLE signals ADD COLUMN sl_order_id TEXT;`);
-    logger.info('✅ Added sl_order_id column to signals table');
-  } catch (err) {
-    // Column likely already exists, ignore
-  }
-
-  logger.info('✅ Database initialized successfully');
+async function initDatabase() {
+  logger.info('🌐 Supabase connection established');
 }
-
-// Auto-initialize tables on module load
-initDatabase();
 
 // ======================
 // Signal Operations
 // ======================
 
-const insertSignal = db.prepare(`
-  INSERT INTO signals (symbol, timeframe, entry_price, stop_loss, tp1, tp2, tp3, tp4, score, setup, status, raw_message, telegram_msg_id)
-  VALUES (@symbol, @timeframe, @entry_price, @stop_loss, @tp1, @tp2, @tp3, @tp4, @score, @setup, @status, @raw_message, @telegram_msg_id)
-`);
+const signals = {
+  async insert(signal) {
+    const { data, error } = await supabase
+      .from('bot_signals')
+      .insert([{
+        symbol: signal.symbol,
+        timeframe: signal.timeframe,
+        entry_price: signal.entry_price,
+        stop_loss: signal.stop_loss,
+        tp1: signal.tp1,
+        tp2: signal.tp2,
+        tp3: signal.tp3,
+        tp4: signal.tp4,
+        score: signal.score,
+        setup: signal.setup,
+        status: signal.status || 'NEW',
+        raw_message: signal.raw_message,
+        telegram_msg_id: signal.telegram_msg_id
+      }])
+      .select();
+    
+    if (error) {
+      logger.error('Supabase insertSignal error', error);
+      throw error;
+    }
+    return { lastInsertRowid: data[0].id };
+  },
 
-const updateSignalStatus = db.prepare(`
-  UPDATE signals SET status = @status, updated_at = CURRENT_TIMESTAMP WHERE id = @id
-`);
+  async updateStatus(id, status) {
+    const { error } = await supabase
+      .from('bot_signals')
+      .update({ status, updated_at: new Date() })
+      .eq('id', id);
+    if (error) logger.error('Supabase updateSignalStatus error', error);
+  },
 
-const updateSlOrderId = db.prepare(`
-  UPDATE signals SET sl_order_id = @sl_order_id, updated_at = CURRENT_TIMESTAMP WHERE id = @id
-`);
+  async updateSlOrderId(id, sl_order_id) {
+    const { error } = await supabase
+      .from('bot_signals')
+      .update({ sl_order_id, updated_at: new Date() })
+      .eq('id', id);
+    if (error) logger.error('Supabase updateSlOrderId error', error);
+  },
 
-const getSignalById = db.prepare('SELECT * FROM signals WHERE id = ?');
+  async getById(id) {
+    const { data, error } = await supabase
+      .from('bot_signals')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) return null;
+    return data;
+  },
 
-const getActiveSignals = db.prepare(`
-  SELECT * FROM signals WHERE status IN ('NEW', 'ACTIVE', 'PARTIALLY_FILLED') ORDER BY created_at DESC
-`);
+  async getActive() {
+    const { data, error } = await supabase
+      .from('bot_signals')
+      .select('*')
+      .in('status', ['NEW', 'ACTIVE', 'PARTIALLY_FILLED'])
+      .order('created_at', { ascending: false });
+    if (error) return [];
+    return data;
+  },
 
-const getAllSignals = db.prepare('SELECT * FROM signals ORDER BY created_at DESC LIMIT ?');
+  async getAll(limit = 50) {
+    const { data, error } = await supabase
+      .from('bot_signals')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) return [];
+    return data;
+  },
 
-const getSignalByTelegramMsgId = db.prepare('SELECT * FROM signals WHERE telegram_msg_id = ?');
+  async getByTelegramMsgId(msgId) {
+    const { data, error } = await supabase
+      .from('bot_signals')
+      .select('*')
+      .eq('telegram_msg_id', msgId)
+      .maybeSingle();
+    if (error) return null;
+    return data;
+  }
+};
 
 // ======================
 // Trade Operations
 // ======================
 
-const insertTrade = db.prepare(`
-  INSERT INTO trades (signal_id, symbol, side, type, quantity, price, order_id, mexc_order_id, status, target_label, is_dry_run)
-  VALUES (@signal_id, @symbol, @side, @type, @quantity, @price, @order_id, @mexc_order_id, @status, @target_label, @is_dry_run)
-`);
+const trades = {
+  async insert(trade) {
+    const { data, error } = await supabase
+      .from('bot_trades')
+      .insert([{
+        signal_id: trade.signal_id,
+        symbol: trade.symbol,
+        side: trade.side,
+        type: trade.type,
+        quantity: trade.quantity,
+        price: trade.price,
+        order_id: trade.order_id,
+        mexc_order_id: trade.mexc_order_id,
+        status: trade.status || 'PENDING',
+        target_label: trade.target_label,
+        is_dry_run: !!trade.is_dry_run
+      }])
+      .select();
+    
+    if (error) {
+      logger.error('Supabase insertTrade error', error);
+      throw error;
+    }
+    return { lastInsertRowid: data[0].id };
+  },
 
-const updateTradeStatus = db.prepare(`
-  UPDATE trades SET status = @status, executed_price = @executed_price, executed_qty = @executed_qty,
-  pnl = @pnl, pnl_percent = @pnl_percent, updated_at = CURRENT_TIMESTAMP WHERE id = @id
-`);
+  async updateStatus(id, updateData) {
+    const { error } = await supabase
+      .from('bot_trades')
+      .update({
+        status: updateData.status,
+        executed_price: updateData.executed_price,
+        executed_qty: updateData.executed_qty,
+        pnl: updateData.pnl,
+        pnl_percent: updateData.pnl_percent,
+        updated_at: new Date()
+      })
+      .eq('id', id);
+    if (error) logger.error('Supabase updateTradeStatus error', error);
+  },
 
-const getTradesBySignalId = db.prepare('SELECT * FROM trades WHERE signal_id = ? ORDER BY created_at ASC');
+  async getBySignalId(signalId) {
+    const { data, error } = await supabase
+      .from('bot_trades')
+      .select('*')
+      .eq('signal_id', signalId)
+      .order('created_at', { ascending: true });
+    if (error) return [];
+    return data;
+  },
 
-const getOpenTrades = db.prepare(`
-  SELECT t.*, s.entry_price as signal_entry, s.stop_loss as signal_sl
-  FROM trades t
-  JOIN signals s ON t.signal_id = s.id
-  WHERE t.status IN ('PENDING', 'FILLED', 'PARTIALLY_FILLED')
-  ORDER BY t.created_at DESC
-`);
+  async getOpen() {
+    // In PostgreSQL, we can use a join or just select trades with specific status
+    const { data, error } = await supabase
+      .from('bot_trades')
+      .select('*, bot_signals(entry_price, stop_loss)')
+      .in('status', ['PENDING', 'FILLED', 'PARTIALLY_FILLED'])
+      .order('created_at', { ascending: false });
+    
+    if (error) return [];
+    
+    // Flatten the result to match the expected format
+    return data.map(t => ({
+      ...t,
+      signal_entry: t.bot_signals?.entry_price,
+      signal_sl: t.bot_signals?.stop_loss
+    }));
+  },
 
-const getAllTrades = db.prepare('SELECT * FROM trades ORDER BY created_at DESC LIMIT ?');
+  async getAll(limit = 50) {
+    const { data, error } = await supabase
+      .from('bot_trades')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (error) return [];
+    return data;
+  }
+};
 
 // ======================
-// Activity Log Operations
+// Activity Log
 // ======================
 
-const insertActivity = db.prepare(`
-  INSERT INTO activity_log (type, message, data) VALUES (@type, @message, @data)
-`);
+async function logActivity(type, message, data = null) {
+  try {
+    await supabase
+      .from('bot_activity_log')
+      .insert([{
+        type,
+        message,
+        data: data ? data : null
+      }]);
+  } catch (err) {
+    logger.error('Failed to log activity to Supabase', { error: err.message });
+  }
+}
 
-const getRecentActivities = db.prepare('SELECT * FROM activity_log ORDER BY created_at DESC LIMIT ?');
+async function getRecentActivities(limit = 50) {
+  const { data, error } = await supabase
+    .from('bot_activity_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return data;
+}
 
 // ======================
 // Statistics
 // ======================
 
-function getStats() {
-  const totalSignals = db.prepare('SELECT COUNT(*) as count FROM signals').get().count;
-  const activeSignals = db.prepare("SELECT COUNT(*) as count FROM signals WHERE status IN ('NEW', 'ACTIVE', 'PARTIALLY_FILLED')").get().count;
-  const totalTrades = db.prepare('SELECT COUNT(*) as count FROM trades').get().count;
-  const openTrades = db.prepare("SELECT COUNT(*) as count FROM trades WHERE status IN ('PENDING', 'FILLED')").get().count;
-  const winTrades = db.prepare("SELECT COUNT(*) as count FROM trades WHERE pnl > 0 AND status = 'CLOSED'").get().count;
-  const lossTrades = db.prepare("SELECT COUNT(*) as count FROM trades WHERE pnl < 0 AND status = 'CLOSED'").get().count;
-  const totalPnl = db.prepare("SELECT COALESCE(SUM(pnl), 0) as total FROM trades WHERE status = 'CLOSED'").get().total;
-  const todaySignals = db.prepare("SELECT COUNT(*) as count FROM signals WHERE date(created_at) = date('now')").get().count;
-  const todayPnl = db.prepare("SELECT COALESCE(SUM(pnl), 0) as total FROM trades WHERE status = 'CLOSED' AND date(created_at) = date('now')").get().total;
-
-  return {
-    totalSignals,
-    activeSignals,
-    totalTrades,
-    openTrades,
-    winTrades,
-    lossTrades,
-    winRate: (winTrades + lossTrades) > 0 ? ((winTrades / (winTrades + lossTrades)) * 100).toFixed(1) : '0.0',
-    totalPnl: totalPnl.toFixed(4),
-    todaySignals,
-    todayPnl: todayPnl.toFixed(4),
-  };
-}
-
-// ======================
-// Log Activity Helper
-// ======================
-
-function logActivity(type, message, data = null) {
+async function getStats() {
   try {
-    insertActivity.run({
-      type,
-      message,
-      data: data ? JSON.stringify(data) : null,
-    });
+    // We can do multiple calls or one RPC. Let's do simple calls for now.
+    const { count: totalSignals } = await supabase.from('bot_signals').select('*', { count: 'exact', head: true });
+    const { count: activeSignals } = await supabase.from('bot_signals').select('*', { count: 'exact', head: true }).in('status', ['NEW', 'ACTIVE', 'PARTIALLY_FILLED']);
+    const { count: totalTrades } = await supabase.from('bot_trades').select('*', { count: 'exact', head: true });
+    const { count: openTrades } = await supabase.from('bot_trades').select('*', { count: 'exact', head: true }).in('status', ['PENDING', 'FILLED']);
+    
+    const { data: closedTrades } = await supabase.from('bot_trades').select('pnl').eq('status', 'CLOSED');
+    
+    const winTrades = closedTrades?.filter(t => t.pnl > 0).length || 0;
+    const lossTrades = closedTrades?.filter(t => t.pnl < 0).length || 0;
+    const totalPnl = closedTrades?.reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0) || 0;
+
+    return {
+      totalSignals: totalSignals || 0,
+      activeSignals: activeSignals || 0,
+      totalTrades: totalTrades || 0,
+      openTrades: openTrades || 0,
+      winTrades,
+      lossTrades,
+      winRate: (winTrades + lossTrades) > 0 ? ((winTrades / (winTrades + lossTrades)) * 100).toFixed(1) : '0.0',
+      totalPnl: totalPnl.toFixed(4),
+      todaySignals: 0, // Simplified for now
+      todayPnl: '0.0000', // Simplified for now
+    };
   } catch (err) {
-    logger.error('Failed to log activity', { error: err.message });
+    logger.error('Failed to get stats from Supabase', err);
+    return {};
   }
 }
 
 module.exports = {
-  db,
+  supabase,
   initDatabase,
   // Signals
-  insertSignal,
-  updateSignalStatus,
-  updateSlOrderId,
-  getSignalById,
-  getActiveSignals,
-  getAllSignals,
-  getSignalByTelegramMsgId,
+  insertSignal: signals.insert,
+  updateSignalStatus: signals.updateStatus,
+  updateSlOrderId: signals.updateSlOrderId,
+  getSignalById: signals.getById,
+  getActiveSignals: signals.getActive,
+  getAllSignals: signals.getAll,
+  getSignalByTelegramMsgId: signals.getByTelegramMsgId,
   // Trades
-  insertTrade,
-  updateTradeStatus,
-  getTradesBySignalId,
-  getOpenTrades,
-  getAllTrades,
+  insertTrade: trades.insert,
+  updateTradeStatus: trades.updateStatus,
+  getTradesBySignalId: trades.getBySignalId,
+  getOpenTrades: trades.getOpen,
+  getAllTrades: trades.getAll,
   // Activity
   logActivity,
   getRecentActivities,

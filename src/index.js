@@ -32,7 +32,7 @@ async function main() {
 
   // Step 1: Initialize database
   logger.info('🔄 Initializing database...');
-  db.initDatabase();
+  await db.initDatabase();
 
   // Step 2: Show config summary
   logger.info('⚙️ Configuration:', {
@@ -49,7 +49,7 @@ async function main() {
     logger.warn('💰 LIVE TRADING mode — Real money will be used!');
   }
 
-  db.logActivity('SYSTEM', `Bot started (DRY_RUN: ${config.trading.dryRun}, Amount: ${config.trading.tradeAmountUsdt} USDT)`);
+  await db.logActivity('SYSTEM', `Bot started (DRY_RUN: ${config.trading.dryRun}, Amount: ${config.trading.tradeAmountUsdt} USDT)`);
 
   // Step 3: Test MEXC connectivity (if not dry run)
   if (!config.trading.dryRun && config.mexc.apiKey) {
@@ -59,7 +59,7 @@ async function main() {
 
       const balance = await require('./exchange/mexcClient').getUsdtBalance();
       logger.info(`💰 USDT Balance: ${balance.free} (locked: ${balance.locked})`);
-      db.logActivity('SYSTEM', `MEXC connected. USDT Balance: ${balance.free}`);
+      await db.logActivity('SYSTEM', `MEXC connected. USDT Balance: ${balance.free}`);
     } catch (err) {
       logger.error('❌ MEXC API connection failed', { error: err.message });
       logger.warn('⚠️ Bot will continue but trading will not work until MEXC connection is restored');
@@ -71,10 +71,10 @@ async function main() {
 
   // Step 5: Start Telegram Bot
   logger.info('🤖 Starting Telegram listener...');
-  await telegramBot.startBot((signal) => {
+  await telegramBot.startBot(async (signal) => {
     try {
       // === CRITICAL: Save signal to database FIRST to get signal.id ===
-      const result = db.insertSignal.run({
+      const result = await db.insertSignal({
         symbol: signal.symbol,
         timeframe: signal.timeframe || 'unknown',
         entry_price: signal.entry,
@@ -89,13 +89,13 @@ async function main() {
         raw_message: signal.raw_message || '',
         telegram_msg_id: signal.telegram_msg_id || null,
       });
-
+ 
       // Set the database ID on the signal object
       signal.id = result.lastInsertRowid;
       logger.info(`📝 Signal saved to DB with ID: ${signal.id}`);
       
       // Now pass to trade manager with proper ID
-      tradeManager.handleSignal(signal);
+      await tradeManager.handleSignal(signal);
     } catch (err) {
       logger.error('❌ Error saving signal to database', { error: err.message });
     }
@@ -103,7 +103,7 @@ async function main() {
 
   // Step 6: Start Price Monitor
   if (config.trading.autoTrade && !config.trading.dryRun) {
-    priceMonitor.startMonitoring();
+    await priceMonitor.startMonitoring();
   }
 
   // Graceful shutdown

@@ -14,14 +14,14 @@ const loggedTPReached = new Map(); // signalId -> Set of TP labels
 /**
  * Start price monitoring for active trades
  */
-function startMonitoring() {
+async function startMonitoring() {
   if (monitorInterval) {
     logger.warn('Price monitor already running');
     return;
   }
 
   logger.info('📈 Price monitor started (interval: 10s)');
-  db.logActivity('MONITOR', 'Price monitor started');
+  await db.logActivity('MONITOR', 'Price monitor started');
 
   monitorInterval = setInterval(async () => {
     try {
@@ -36,12 +36,12 @@ function startMonitoring() {
 /**
  * Stop price monitoring
  */
-function stopMonitoring() {
+async function stopMonitoring() {
   if (monitorInterval) {
     clearInterval(monitorInterval);
     monitorInterval = null;
     logger.info('🛑 Price monitor stopped');
-    db.logActivity('MONITOR', 'Price monitor stopped');
+    await db.logActivity('MONITOR', 'Price monitor stopped');
   }
 }
 
@@ -50,8 +50,8 @@ function stopMonitoring() {
  */
 async function checkPrices() {
   if (config.trading.dryRun) return; // Skip for dry run
-
-  const activeSignals = db.getActiveSignals.all();
+ 
+  const activeSignals = await db.getActiveSignals();
   if (activeSignals.length === 0) return;
 
   // Optimization: Fetch all prices in one call to avoid rate limits
@@ -82,7 +82,7 @@ async function checkPrices() {
       let dynamicSL = signal.stop_loss;
       
       // Get DB trades to check for filled TPs robustly
-      const trades = db.getTradesBySignalId.all(signal.id);
+      const trades = await db.getTradesBySignalId(signal.id);
       const filledTPLabels = trades
         .filter(t => t.side === 'SELL' && t.status === 'FILLED' && t.target_label && t.target_label.startsWith('TP'))
         .map(t => t.target_label);
@@ -122,7 +122,7 @@ async function checkPrices() {
         if (tp.price && currentPrice >= tp.price && !logged.has(tp.label)) {
           logged.add(tp.label);
           logger.info(`🎯 ${tp.label} reached: ${signal.symbol} @ $${currentPrice} (Target: $${tp.price})`);
-          db.logActivity('TP_REACHED', `${tp.label} reached: ${signal.symbol} @ $${currentPrice}`);
+          await db.logActivity('TP_REACHED', `${tp.label} reached: ${signal.symbol} @ $${currentPrice}`);
           
           // Execute the Take Profit sell and update the exchange SL
           await handleTakeProfit(signal, tp, currentPrice, dynamicSL);
@@ -132,10 +132,10 @@ async function checkPrices() {
       // If all TPs reached, mark signal as completed
       const allTPsReached = targets.every(tp => !tp.price || logged.has(tp.label));
       if (allTPsReached && targets.some(tp => tp.price)) {
-        db.updateSignalStatus.run({ id: signal.id, status: 'COMPLETED' });
+        await db.updateSignalStatus(signal.id, 'COMPLETED');
         loggedTPReached.delete(signal.id);
         logger.info(`🏆 All targets reached! Signal completed: ${signal.symbol}`);
-        db.logActivity('COMPLETED', `All targets reached: ${signal.symbol}`);
+        await db.logActivity('COMPLETED', `All targets reached: ${signal.symbol}`);
       }
 
     } catch (err) {
@@ -152,7 +152,7 @@ async function checkPrices() {
  */
 async function handleTakeProfit(signal, target, currentPrice, newSL) {
   try {
-    const trades = db.getTradesBySignalId.all(signal.id);
+    const trades = await db.getTradesBySignalId(signal.id);
     const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING' || t.status === 'SIMULATED'));
     const sellTrades = trades.filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'));
     
@@ -192,8 +192,8 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
 
     const tpMsg = `📈 ${target.label} Executed: ${signal.symbol} | P&L: $${pnl.toFixed(4)} (${pnlPercent.toFixed(2)}%)`;
     notifier.sendNotification(tpMsg);
-
-    db.insertTrade.run({
+ 
+    await db.insertTrade({
       signal_id: signal.id,
       symbol: signal.symbol,
       side: 'SELL',
@@ -206,8 +206,8 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
       target_label: target.label,
       is_dry_run: config.trading.dryRun ? 1 : 0
     });
-
-    db.logActivity('TP_EXECUTED', `${target.label} executed: ${signal.symbol} P&L: $${pnl.toFixed(4)}`);
+ 
+    await db.logActivity('TP_EXECUTED', `${target.label} executed: ${signal.symbol} P&L: $${pnl.toFixed(4)}`);
 
     // Update the SL order on the exchange for the remaining quantity
     const nextRemaining = Math.floor((currentRemaining - sellQty) * 100) / 100;
@@ -217,7 +217,7 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
       await tradeManager.placeStopLossOrder(signal, nextRemaining, newSL, config.trading.dryRun);
     } else {
       // All positions closed via TPs
-      db.updateSignalStatus.run({ id: signal.id, status: 'COMPLETED' });
+      await db.updateSignalStatus(signal.id, 'COMPLETED');
       
       // Cancel the final SL order if it exists
       if (!config.trading.dryRun && signal.sl_order_id) {
@@ -237,13 +237,12 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
 async function handleStopLoss(signal, currentPrice) {
   try {
     // Cancel all open sell orders for this signal
-    const trades = db.getTradesBySignalId.all(signal.id);
+    const trades = await db.getTradesBySignalId(signal.id);
     for (const trade of trades) {
       if (trade.side === 'SELL' && trade.status === 'PENDING' && trade.mexc_order_id) {
         try {
           await mexcClient.cancelOrder(signal.symbol, trade.mexc_order_id);
-          db.updateTradeStatus.run({
-            id: trade.id,
+          await db.updateTradeStatus(trade.id, {
             status: 'CANCELED',
             executed_price: 0,
             executed_qty: 0,
@@ -283,7 +282,7 @@ async function handleStopLoss(signal, currentPrice) {
           const slMsg = `🔴 SL Executed: ${signal.symbol} | Loss: $${pnl.toFixed(4)}`;
           logger.warn(slMsg);
           notifier.sendNotification(slMsg);
-          db.logActivity('SL_EXECUTED', `Stop loss executed: ${signal.symbol} Qty: ${sellQty} Loss: $${pnl.toFixed(4)}`);
+          await db.logActivity('SL_EXECUTED', `Stop loss executed: ${signal.symbol} Qty: ${sellQty} Loss: $${pnl.toFixed(4)}`);
         } else {
           logger.warn(`⚠️ No ${tokenSymbol} balance to sell for SL`);
         }
@@ -291,8 +290,8 @@ async function handleStopLoss(signal, currentPrice) {
         logger.error('Failed to execute SL sell', { error: sellErr.message });
       }
     }
-
-    db.updateSignalStatus.run({ id: signal.id, status: 'STOPPED' });
+ 
+    await db.updateSignalStatus(signal.id, 'STOPPED');
     loggedTPReached.delete(signal.id); // Clean up tracking
 
   } catch (err) {

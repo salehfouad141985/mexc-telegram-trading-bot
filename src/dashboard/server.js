@@ -15,9 +15,9 @@ app.use(express.json());
 // ========================
 
 // Get dashboard stats
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats', async (req, res) => {
   try {
-    const stats = db.getStats();
+    const stats = await db.getStats();
     stats.dryRun = config.trading.dryRun;
     stats.autoTrade = config.trading.autoTrade;
     stats.tradeAmount = config.trading.tradeAmountUsdt;
@@ -29,10 +29,10 @@ app.get('/api/stats', (req, res) => {
 });
 
 // Get all signals
-app.get('/api/signals', (req, res) => {
+app.get('/api/signals', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
-    const signals = db.getAllSignals.all(limit);
+    const signals = await db.getAllSignals(limit);
     res.json(signals);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -40,9 +40,9 @@ app.get('/api/signals', (req, res) => {
 });
 
 // Get active signals
-app.get('/api/signals/active', (req, res) => {
+app.get('/api/signals/active', async (req, res) => {
   try {
-    const signals = db.getActiveSignals.all();
+    const signals = await db.getActiveSignals();
     res.json(signals);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -50,9 +50,9 @@ app.get('/api/signals/active', (req, res) => {
 });
 
 // Get trades for a signal
-app.get('/api/signals/:id/trades', (req, res) => {
+app.get('/api/signals/:id/trades', async (req, res) => {
   try {
-    const trades = db.getTradesBySignalId.all(parseInt(req.params.id));
+    const trades = await db.getTradesBySignalId(parseInt(req.params.id));
     res.json(trades);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -60,10 +60,10 @@ app.get('/api/signals/:id/trades', (req, res) => {
 });
 
 // Get all trades
-app.get('/api/trades', (req, res) => {
+app.get('/api/trades', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
-    const trades = db.getAllTrades.all(limit);
+    const trades = await db.getAllTrades(limit);
     res.json(trades);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -71,9 +71,9 @@ app.get('/api/trades', (req, res) => {
 });
 
 // Get open trades
-app.get('/api/trades/open', (req, res) => {
+app.get('/api/trades/open', async (req, res) => {
   try {
-    const trades = db.getOpenTrades.all();
+    const trades = await db.getOpenTrades();
     res.json(trades);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -81,10 +81,10 @@ app.get('/api/trades/open', (req, res) => {
 });
 
 // Get activity log
-app.get('/api/activity', (req, res) => {
+app.get('/api/activity', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 30;
-    const activities = db.getRecentActivities.all(limit);
+    const activities = await db.getRecentActivities(limit);
     res.json(activities);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -129,9 +129,9 @@ app.get('/', (req, res) => {
  */
 function startDashboard() {
   const port = config.dashboard.port;
-  app.listen(port, '0.0.0.0', () => {
+  app.listen(port, '0.0.0.0', async () => {
     logger.info(`🖥️  Dashboard running at http://localhost:${port}`);
-    db.logActivity('SYSTEM', `Dashboard started on port ${port}`);
+    await db.logActivity('SYSTEM', `Dashboard started on port ${port}`);
   });
 }
 
