@@ -49,8 +49,7 @@ async function stopMonitoring() {
  * Check prices and handle SL/TP triggers
  */
 async function checkPrices() {
-  if (config.trading.dryRun) return; // Skip for dry run
- 
+  // We allow checkPrices to run even in dryRun to simulate TP/SL triggers in logs/UI
   const activeSignals = await db.getActiveSignals();
   if (activeSignals.length === 0) return;
 

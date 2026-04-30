@@ -95,7 +95,7 @@ async function pollForMessages() {
       const parsedSignal = signalParser.parse(text);
       if (parsedSignal) {
         // === DUPLICATE CHECK: Skip if already processed ===
-        const existing = db.getSignalByTelegramMsgId.get(msg.id);
+        const existing = await db.getSignalByTelegramMsgId(msg.id);
         if (existing) {
           logger.info(`⏭️ Signal already processed (msg ID: ${msg.id}), skipping.`);
           continue;

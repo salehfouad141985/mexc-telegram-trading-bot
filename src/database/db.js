@@ -222,29 +222,45 @@ async function getRecentActivities(limit = 50) {
 
 async function getStats() {
   try {
-    // We can do multiple calls or one RPC. Let's do simple calls for now.
     const { count: totalSignals } = await supabase.from('bot_signals').select('*', { count: 'exact', head: true });
     const { count: activeSignals } = await supabase.from('bot_signals').select('*', { count: 'exact', head: true }).in('status', ['NEW', 'ACTIVE', 'PARTIALLY_FILLED']);
     const { count: totalTrades } = await supabase.from('bot_trades').select('*', { count: 'exact', head: true });
-    const { count: openTrades } = await supabase.from('bot_trades').select('*', { count: 'exact', head: true }).in('status', ['PENDING', 'FILLED']);
     
-    const { data: closedTrades } = await supabase.from('bot_trades').select('pnl').eq('status', 'CLOSED');
+    // Get only SELL trades for PnL calculation
+    const { data: sellTrades } = await supabase
+      .from('bot_trades')
+      .select('pnl, created_at')
+      .eq('side', 'SELL')
+      .in('status', ['FILLED', 'SIMULATED']);
     
-    const winTrades = closedTrades?.filter(t => t.pnl > 0).length || 0;
-    const lossTrades = closedTrades?.filter(t => t.pnl < 0).length || 0;
-    const totalPnl = closedTrades?.reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0) || 0;
+    const winTrades = sellTrades?.filter(t => t.pnl > 0).length || 0;
+    const lossTrades = sellTrades?.filter(t => t.pnl < 0).length || 0;
+    const totalPnl = sellTrades?.reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0) || 0;
+
+    // Calculate today's stats
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
+
+    const { count: todaySignalsCount } = await supabase
+      .from('bot_signals')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', todayISO);
+
+    const todayPnl = sellTrades
+      ?.filter(t => new Date(t.created_at) >= today)
+      .reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0) || 0;
 
     return {
       totalSignals: totalSignals || 0,
       activeSignals: activeSignals || 0,
       totalTrades: totalTrades || 0,
-      openTrades: openTrades || 0,
       winTrades,
       lossTrades,
       winRate: (winTrades + lossTrades) > 0 ? ((winTrades / (winTrades + lossTrades)) * 100).toFixed(1) : '0.0',
       totalPnl: totalPnl.toFixed(4),
-      todaySignals: 0, // Simplified for now
-      todayPnl: '0.0000', // Simplified for now
+      todaySignals: todaySignalsCount || 0,
+      todayPnl: todayPnl.toFixed(4),
     };
   } catch (err) {
     logger.error('Failed to get stats from Supabase', err);
