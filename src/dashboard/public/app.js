@@ -1,26 +1,55 @@
 /**
- * Shaabane Signals Bot — Dashboard Client JS
- * Real-time data polling and UI rendering
+ * Shaabane Signals Bot — Premium Dashboard Client JS v2.0
+ * Real-time data polling, Futuristic UI rendering, and PnL Tracking
  */
 
 const API_BASE = '';
-const POLL_INTERVAL = 4000; // 4 seconds
+const POLL_INTERVAL = 4000;
 
+let pnlHistory = []; // For sparkline
 let lastStats = null;
-let lastSignalsCount = 0;
 
 // ===========================
 // Initialization
 // ===========================
 
 document.addEventListener('DOMContentLoaded', () => {
+  initNavigation();
   fetchAll();
   setInterval(fetchAll, POLL_INTERVAL);
 });
 
+function initNavigation() {
+  const navLinks = document.querySelectorAll('.nav-link');
+  navLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      navLinks.forEach(l => l.classList.remove('active'));
+      link.classList.add('active');
+      
+      const target = link.id;
+      const pageTitle = document.getElementById('pageTitle');
+      
+      if (target === 'navOverview') {
+        pageTitle.textContent = 'نظرة عامة';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (target === 'navSignals') {
+        pageTitle.textContent = 'الإشارات النشطة';
+        document.querySelector('.dashboard-grid').scrollIntoView({ behavior: 'smooth' });
+      } else if (target === 'navTrades') {
+        pageTitle.textContent = 'تاريخ الصفقات';
+        document.getElementById('tradesTable').scrollIntoView({ behavior: 'smooth' });
+      } else if (target === 'navSettings') {
+        pageTitle.textContent = 'الإعدادات';
+        document.getElementById('settingsView').scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  });
+}
+
 async function fetchAll() {
   try {
-    await Promise.all([
+    const results = await Promise.allSettled([
       fetchStats(),
       fetchBalance(),
       fetchSignals(),
@@ -29,18 +58,22 @@ async function fetchAll() {
       fetchConfig(),
     ]);
 
-    // Update connection status
+    // Check if any failed
+    const someSuccess = results.some(r => r.status === 'fulfilled');
+    
     const badge = document.getElementById('statusBadge');
-    badge.classList.add('connected');
-    badge.querySelector('.status-text').textContent = 'متصل';
+    if (someSuccess) {
+      badge.classList.add('connected');
+      badge.querySelector('.status-label').textContent = 'متصل بالسحابة';
+    } else {
+      badge.classList.remove('connected');
+      badge.querySelector('.status-label').textContent = 'جاري المحاولة...';
+    }
 
-    // Update last refresh time
     document.getElementById('lastUpdate').textContent =
       'آخر تحديث: ' + new Date().toLocaleTimeString('ar-EG');
   } catch (err) {
-    const badge = document.getElementById('statusBadge');
-    badge.classList.remove('connected');
-    badge.querySelector('.status-text').textContent = 'غير متصل';
+    console.error('Fetch error:', err);
   }
 }
 
@@ -67,16 +100,20 @@ async function fetchStats() {
   pnlEl.classList.remove('positive', 'negative');
   pnlEl.classList.add(pnlVal >= 0 ? 'positive' : 'negative');
 
-  const todayPnlVal = parseFloat(data.todayPnl);
-  document.getElementById('todayPnl').textContent = `$${todayPnlVal.toFixed(2)}`;
+  document.getElementById('todayPnl').textContent = `اليوم: $${parseFloat(data.todayPnl).toFixed(2)}`;
+
+  // Update PnL History for Sparkline
+  pnlHistory.push(pnlVal);
+  if (pnlHistory.length > 20) pnlHistory.shift();
+  drawSparkline('pnlSparkline', pnlHistory);
 
   // Mode badge
   const modeBadge = document.getElementById('modeBadge');
   if (data.dryRun) {
-    modeBadge.innerHTML = '<span>🧪 DRY RUN</span>';
+    modeBadge.innerHTML = '<i class="fas fa-flask"></i> <span>DRY RUN</span>';
     modeBadge.classList.remove('live');
   } else {
-    modeBadge.innerHTML = '<span>🔴 LIVE</span>';
+    modeBadge.innerHTML = '<i class="fas fa-satellite"></i> <span>LIVE MODE</span>';
     modeBadge.classList.add('live');
   }
 }
@@ -85,7 +122,7 @@ async function fetchBalance() {
   try {
     const res = await fetch(`${API_BASE}/api/balance`);
     const data = await res.json();
-    const balVal = parseFloat(data.free || 0).toFixed(2);
+    const balVal = parseFloat(data.free || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     document.getElementById('balanceValue').textContent = balVal;
   } catch {
     document.getElementById('balanceValue').textContent = '—';
@@ -93,7 +130,7 @@ async function fetchBalance() {
 }
 
 async function fetchSignals() {
-  const res = await fetch(`${API_BASE}/api/signals?limit=20`);
+  const res = await fetch(`${API_BASE}/api/signals?limit=10`);
   const signals = await res.json();
 
   const listEl = document.getElementById('signalsList');
@@ -106,7 +143,7 @@ async function fetchSignals() {
   }
 
   emptyEl.style.display = 'none';
-  listEl.innerHTML = signals.map((s) => renderSignalCard(s)).join('');
+  listEl.innerHTML = signals.map(s => renderSignalCard(s)).join('');
 }
 
 function refreshSignals() {
@@ -122,22 +159,20 @@ async function fetchTrades() {
   let trades = await res.json();
 
   if (filter === 'closed') {
-    trades = trades.filter((t) => t.status === 'FILLED' || t.status === 'CLOSED' || t.status === 'CANCELED');
+    trades = trades.filter(t => ['FILLED', 'CLOSED', 'CANCELED'].includes(t.status));
   }
 
   const emptyEl = document.getElementById('tradesEmpty');
-  const wrapperEl = document.getElementById('tradesTableWrapper');
   const tbody = document.getElementById('tradesTableBody');
 
   if (trades.length === 0) {
     emptyEl.style.display = 'flex';
-    wrapperEl.style.display = 'none';
+    tbody.innerHTML = '';
     return;
   }
 
   emptyEl.style.display = 'none';
-  wrapperEl.style.display = 'block';
-  tbody.innerHTML = trades.map((t) => renderTradeRow(t)).join('');
+  tbody.innerHTML = trades.map(t => renderTradeRow(t)).join('');
 }
 
 function refreshTrades() {
@@ -145,23 +180,21 @@ function refreshTrades() {
 }
 
 async function fetchActivity() {
-  const res = await fetch(`${API_BASE}/api/activity?limit=25`);
+  const res = await fetch(`${API_BASE}/api/activity?limit=30`);
   const activities = await res.json();
 
   const listEl = document.getElementById('activityList');
-  const emptyEl = document.getElementById('activityEmpty');
-
   if (activities.length === 0) {
-    emptyEl.style.display = 'flex';
-    listEl.innerHTML = '';
+    listEl.innerHTML = '<div class="activity-line"><span class="line-msg">لا توجد سجلات حالياً...</span></div>';
     return;
   }
 
-  emptyEl.style.display = 'none';
-  listEl.innerHTML = activities.map((a) => renderActivityItem(a)).join('');
+  listEl.innerHTML = activities.map(a => renderActivityLine(a)).join('');
 }
 
 function refreshActivity() {
+  const listEl = document.getElementById('activityList');
+  listEl.innerHTML = '';
   fetchActivity();
 }
 
@@ -170,11 +203,13 @@ async function fetchConfig() {
     const res = await fetch(`${API_BASE}/api/config`);
     const cfg = await res.json();
 
-    document.getElementById('settingDryRun').textContent = cfg.dryRun ? '🧪 تجريبي' : '🔴 حقيقي';
-    document.getElementById('settingDryRun').style.color = cfg.dryRun ? 'var(--yellow)' : 'var(--red)';
+    const dryEl = document.getElementById('settingDryRun');
+    dryEl.textContent = cfg.dryRun ? 'تجريبي (Dry Run)' : 'حقيقي (Live)';
+    dryEl.className = 'value ' + (cfg.dryRun ? 'text-warning' : 'pnl-negative');
 
-    document.getElementById('settingAutoTrade').textContent = cfg.autoTrade ? '✅ مفعّل' : '❌ معطّل';
-    document.getElementById('settingAutoTrade').style.color = cfg.autoTrade ? 'var(--green)' : 'var(--red)';
+    const autoEl = document.getElementById('settingAutoTrade');
+    autoEl.textContent = cfg.autoTrade ? 'مفعّل ✅' : 'معطّل ❌';
+    autoEl.style.color = cfg.autoTrade ? 'var(--accent-emerald)' : 'var(--accent-rose)';
 
     document.getElementById('settingAmount').textContent = `${cfg.tradeAmountUsdt} USDT`;
     document.getElementById('settingMinScore').textContent = `${cfg.minScore} / 10`;
@@ -182,9 +217,7 @@ async function fetchConfig() {
     document.getElementById('settingTP2').textContent = `${cfg.tp2Percent}%`;
     document.getElementById('settingTP3').textContent = `${cfg.tp3Percent}%`;
     document.getElementById('settingTP4').textContent = `${cfg.tp4Percent}%`;
-  } catch {
-    // ignore
-  }
+  } catch (e) { console.error(e); }
 }
 
 // ===========================
@@ -193,8 +226,7 @@ async function fetchConfig() {
 
 function renderSignalCard(signal) {
   const scoreClass = signal.score >= 8 ? 'score-high' : signal.score >= 6 ? 'score-mid' : 'score-low';
-  const statusClass = getSignalStatusClass(signal.status);
-
+  
   const targets = [];
   if (signal.tp1) targets.push(`TP1: $${signal.tp1}`);
   if (signal.tp2) targets.push(`TP2: $${signal.tp2}`);
@@ -202,38 +234,35 @@ function renderSignalCard(signal) {
   if (signal.tp4) targets.push(`TP4: $${signal.tp4}`);
 
   const time = new Date(signal.created_at).toLocaleString('ar-EG', {
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    day: 'numeric',
+    hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric'
   });
 
   return `
     <div class="signal-card">
       <div class="signal-top">
         <span class="signal-symbol">${signal.symbol}</span>
-        <span class="signal-score ${scoreClass}">⭐ ${signal.score || '—'}</span>
+        <span class="signal-score ${scoreClass}"><i class="fas fa-star"></i> ${signal.score || '—'}</span>
       </div>
       <div class="signal-prices">
-        <div class="signal-price">
-          <span class="signal-price-label">الدخول</span>
-          <span class="signal-price-value price-entry">$${signal.entry_price}</span>
+        <div class="price-item">
+          <span class="price-label">الدخول</span>
+          <span class="price-value">$${signal.entry_price}</span>
         </div>
-        <div class="signal-price">
-          <span class="signal-price-label">وقف الخسارة</span>
-          <span class="signal-price-value price-sl">$${signal.stop_loss || '—'}</span>
+        <div class="price-item">
+          <span class="price-label">وقف الخسارة</span>
+          <span class="price-value text-rose">$${signal.stop_loss || '—'}</span>
         </div>
-        <div class="signal-price">
-          <span class="signal-price-label">الإطار</span>
-          <span class="signal-price-value">${signal.timeframe || '—'}</span>
+        <div class="price-item">
+          <span class="price-label">الإطار</span>
+          <span class="price-value">${signal.timeframe || '—'}</span>
         </div>
       </div>
-      <div class="signal-targets">
-        ${targets.map((t) => `<span class="target-badge">${t}</span>`).join('')}
+      <div class="target-pills">
+        ${targets.map(t => `<span class="pill">${t}</span>`).join('')}
       </div>
-      <div class="signal-meta">
-        <span class="signal-status ${statusClass}">${translateStatus(signal.status)}</span>
-        <span>${time}</span>
+      <div class="signal-meta mt-12 flex-between">
+        <span class="status-pill ${getSignalStatusClass(signal.status)}">${translateStatus(signal.status)}</span>
+        <span class="text-muted small">${time}</span>
       </div>
     </div>
   `;
@@ -246,121 +275,90 @@ function renderTradeRow(trade) {
   const pnlClass = pnl > 0 ? 'pnl-positive' : pnl < 0 ? 'pnl-negative' : '';
 
   const time = new Date(trade.created_at).toLocaleString('ar-EG', {
-    hour: '2-digit',
-    minute: '2-digit',
-    month: 'short',
-    day: 'numeric',
+    hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric'
   });
 
   return `
     <tr>
       <td class="mono">${trade.symbol}</td>
-      <td>${trade.type}</td>
-      <td><span class="badge ${sideClass}">${trade.side === 'BUY' ? 'شراء' : 'بيع'}</span></td>
+      <td class="small">${trade.type}</td>
+      <td><span class="status-pill ${trade.side === 'BUY' ? 'status-filled' : 'status-canceled'}">${trade.side === 'BUY' ? 'شراء' : 'بيع'}</span></td>
       <td class="mono">${trade.quantity}</td>
       <td class="mono">$${trade.price || '—'}</td>
-      <td><span class="badge badge-simulated">${trade.target_label || '—'}</span></td>
-      <td><span class="badge ${statusClass}">${translateTradeStatus(trade.status)}</span></td>
-      <td class="mono ${pnlClass}">${pnl !== 0 ? '$' + pnl.toFixed(4) : '—'}</td>
-      <td>${time}</td>
+      <td><span class="pill hit">${trade.target_label || '—'}</span></td>
+      <td><span class="status-pill ${statusClass}">${translateTradeStatus(trade.status)}</span></td>
+      <td class="mono ${pnlClass}">${pnl !== 0 ? (pnl > 0 ? '+' : '') + '$' + pnl.toFixed(4) : '—'}</td>
+      <td class="text-muted small">${time}</td>
     </tr>
   `;
 }
 
-function renderActivityItem(activity) {
-  const dotClass = getActivityDotClass(activity.type);
-  const time = new Date(activity.created_at).toLocaleString('ar-EG', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+function renderActivityLine(activity) {
+  const typeClass = getActivityTypeClass(activity.type);
+  const time = new Date(activity.created_at).toLocaleTimeString('ar-EG', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
   });
 
   return `
-    <div class="activity-item">
-      <div class="activity-dot ${dotClass}"></div>
-      <div class="activity-content">
-        <div class="activity-message">${activity.message}</div>
-        <div class="activity-time">${time}</div>
-      </div>
+    <div class="activity-line">
+      <span class="line-time">[${time}]</span>
+      <span class="line-msg ${typeClass}">${activity.message}</span>
     </div>
   `;
 }
 
 // ===========================
-// Helpers
+// Helpers & Graphics
 // ===========================
 
+function drawSparkline(canvasId, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+  
+  ctx.clearRect(0, 0, width, height);
+  if (data.length < 2) return;
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+
+  ctx.beginPath();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = data[data.length-1] >= data[0] ? '#10b981' : '#f43f5e';
+  
+  data.forEach((val, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - ((val - min) / range) * height;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
 function getSignalStatusClass(status) {
-  const map = {
-    NEW: 'status-new',
-    ACTIVE: 'status-active',
-    PARTIALLY_FILLED: 'status-active',
-    STOPPED: 'status-stopped',
-    ERROR: 'status-stopped',
-    SKIPPED: 'status-skipped',
-    UNAVAILABLE: 'status-skipped',
-    INSUFFICIENT_BALANCE: 'status-stopped',
-  };
-  return map[status] || 'status-new';
+  const map = { ACTIVE: 'status-filled', NEW: 'status-pending', STOPPED: 'status-canceled', ERROR: 'status-canceled' };
+  return map[status] || 'status-pending';
 }
 
 function translateStatus(status) {
-  const map = {
-    NEW: 'جديد',
-    ACTIVE: 'نشط',
-    PARTIALLY_FILLED: 'مملوء جزئياً',
-    STOPPED: 'متوقف',
-    ERROR: 'خطأ',
-    SKIPPED: 'تم التجاوز',
-    UNAVAILABLE: 'غير متاح',
-    INSUFFICIENT_BALANCE: 'رصيد غير كافي',
-    INVALID_QUANTITY: 'كمية خاطئة',
-  };
+  const map = { NEW: 'جديد', ACTIVE: 'نشط', STOPPED: 'متوقف', ERROR: 'خطأ', SKIPPED: 'تم التجاوز' };
   return map[status] || status;
 }
 
 function getTradeStatusBadge(status) {
-  const map = {
-    PENDING: 'badge-pending',
-    FILLED: 'badge-filled',
-    SIMULATED: 'badge-simulated',
-    CANCELED: 'badge-canceled',
-    CLOSED: 'badge-filled',
-  };
-  return map[status] || 'badge-pending';
+  const map = { PENDING: 'status-pending', FILLED: 'status-filled', CLOSED: 'status-filled', CANCELED: 'status-canceled' };
+  return map[status] || 'status-pending';
 }
 
 function translateTradeStatus(status) {
-  const map = {
-    PENDING: 'معلق',
-    FILLED: 'مُنفَّذ',
-    SIMULATED: 'محاكاة',
-    CANCELED: 'ملغي',
-    CLOSED: 'مغلق',
-    PARTIALLY_FILLED: 'جزئي',
-  };
+  const map = { PENDING: 'معلق', FILLED: 'مُنفَّذ', CLOSED: 'مغلق', CANCELED: 'ملغي' };
   return map[status] || status;
 }
 
-function getActivityDotClass(type) {
-  const map = {
-    SIGNAL: 'dot-signal',
-    TRADE: 'dot-trade',
-    TARGET: 'dot-trade',
-    FILLED: 'dot-trade',
-    ERROR: 'dot-error',
-    SYSTEM: 'dot-system',
-    BOT: 'dot-system',
-    MONITOR: 'dot-system',
-    SKIP: 'dot-skip',
-    SAVED: 'dot-signal',
-    SL_HIT: 'dot-error',
-    SL_EXECUTED: 'dot-error',
-    TP_HIT: 'dot-trade',
-    TP_REACHED: 'dot-trade',
-    UPDATE: 'dot-signal',
-    UNAVAILABLE: 'dot-skip',
-    INSUFFICIENT: 'dot-error',
-  };
-  return map[type] || 'dot-system';
+function getActivityTypeClass(type) {
+  const map = { SIGNAL: 'type-signal', TRADE: 'type-trade', ERROR: 'type-error', SYSTEM: 'type-system' };
+  return map[type] || 'type-system';
 }

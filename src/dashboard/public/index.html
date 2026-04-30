@@ -3,214 +3,273 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Shaabane Signals Bot — لوحة التحكم</title>
+  <title>Shaabane Signals Bot — Financial Hub</title>
   <meta name="description" content="بوت تداول آلي — توصيات Shaabane Signals على MEXC">
+  
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <!-- Header -->
-  <header class="header" id="header">
-    <div class="header-left">
-      <div class="logo">
-        <span class="logo-icon">🤖</span>
-        <div>
-          <h1 class="logo-title">Shaabane Signals Bot</h1>
-          <span class="logo-sub">MEXC Auto Trader</span>
+<body class="premium-theme">
+  
+  <div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-icon-wrapper">
+            <i class="fas fa-robot"></i>
+          </div>
+          <div class="logo-text">
+            <span class="logo-name">SHAABANE</span>
+            <span class="logo-tag">ALGO TRADER</span>
+          </div>
         </div>
       </div>
+      
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-link active" id="navOverview">
+          <i class="fas fa-chart-line"></i>
+          <span>نظرة عامة</span>
+        </a>
+        <a href="#" class="nav-link" id="navSignals">
+          <i class="fas fa-satellite-dish"></i>
+          <span>الإشارات</span>
+        </a>
+        <a href="#" class="nav-link" id="navTrades">
+          <i class="fas fa-exchange-alt"></i>
+          <span>الصفقات</span>
+        </a>
+        <a href="#" class="nav-link" id="navActivity">
+          <i class="fas fa-list-ul"></i>
+          <span>سجل العمليات</span>
+        </a>
+        <div class="nav-spacer"></div>
+        <a href="#" class="nav-link" id="navSettings">
+          <i class="fas fa-cog"></i>
+          <span>الإعدادات</span>
+        </a>
+      </nav>
+      
+      <div class="sidebar-footer">
+        <div class="connection-status" id="statusBadge">
+          <div class="status-indicator"></div>
+          <span class="status-label">جاري الاتصال...</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="main-wrapper">
+      <!-- Top Header -->
+      <header class="top-bar">
+        <div class="top-bar-left">
+          <h2 class="page-title" id="pageTitle">نظرة عامة</h2>
+        </div>
+        <div class="top-bar-right">
+          <div class="mode-indicator" id="modeBadge">
+            <i class="fas fa-flask"></i>
+            <span>DRY RUN</span>
+          </div>
+          <div class="balance-card">
+            <span class="balance-label">الرصيد المتاح</span>
+            <div class="balance-amount">
+              <span id="balanceValue">0.00</span>
+              <span class="currency">USDT</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Dashboard Content -->
+      <main class="content-container">
+        <!-- Stats Row -->
+        <div class="stats-row">
+          <div class="glass-card stat-item">
+            <div class="stat-header">
+              <div class="stat-icon-box blue">
+                <i class="fas fa-signal"></i>
+              </div>
+              <div class="stat-trend" id="todaySignals">اليوم: 0</div>
+            </div>
+            <div class="stat-body">
+              <span class="stat-title">إجمالي الإشارات</span>
+              <div class="stat-value-row">
+                <h3 class="stat-number" id="totalSignals">0</h3>
+              </div>
+            </div>
+          </div>
+          
+          <div class="glass-card stat-item">
+            <div class="stat-header">
+              <div class="stat-icon-box purple">
+                <i class="fas fa-briefcase"></i>
+              </div>
+              <div class="stat-trend" id="totalTrades">الإجمالي: 0</div>
+            </div>
+            <div class="stat-body">
+              <span class="stat-title">صفقات مفتوحة</span>
+              <div class="stat-value-row">
+                <h3 class="stat-number" id="openTrades">0</h3>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass-card stat-item">
+            <div class="stat-header">
+              <div class="stat-icon-box emerald">
+                <i class="fas fa-bullseye"></i>
+              </div>
+              <div class="stat-trend" id="winStats"><span id="winCount">0</span> ✅ / <span id="lossCount">0</span> ❌</div>
+            </div>
+            <div class="stat-body">
+              <span class="stat-title">نسبة النجاح</span>
+              <div class="stat-value-row">
+                <h3 class="stat-number" id="winRate">0%</h3>
+              </div>
+            </div>
+          </div>
+
+          <div class="glass-card stat-item">
+            <div class="stat-header">
+              <div class="stat-icon-box gold">
+                <i class="fas fa-wallet"></i>
+              </div>
+              <div class="stat-trend" id="todayPnl">اليوم: $0.00</div>
+            </div>
+            <div class="stat-body">
+              <span class="stat-title">إجمالي الأرباح</span>
+              <div class="stat-value-row">
+                <h3 class="stat-number pnl-value" id="totalPnl">$0.00</h3>
+                <canvas id="pnlSparkline" width="60" height="24"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dynamic Grid -->
+        <div class="dashboard-grid">
+          <!-- Left Column: Active Signals -->
+          <div class="glass-card grid-span-2">
+            <div class="card-header">
+              <h4 class="card-title"><i class="fas fa-bolt text-warning"></i> الإشارات النشطة</h4>
+              <button class="icon-btn" onclick="refreshSignals()"><i class="fas fa-sync-alt"></i></button>
+            </div>
+            <div class="card-content" id="signalsBody">
+              <div class="empty-placeholder" id="signalsEmpty">
+                <div class="pulse-icon"><i class="fas fa-satellite-dish"></i></div>
+                <p>في انتظار إشارات جديدة من القناة...</p>
+              </div>
+              <div class="signals-container" id="signalsList"></div>
+            </div>
+          </div>
+
+          <!-- Right Column: Recent Activity -->
+          <div class="glass-card">
+            <div class="card-header">
+              <h4 class="card-title"><i class="fas fa-terminal"></i> السجل المباشر</h4>
+              <button class="icon-btn" onclick="refreshActivity()"><i class="fas fa-eraser"></i></button>
+            </div>
+            <div class="card-content terminal-mode" id="activityBody">
+              <div class="activity-feed" id="activityList"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Row: Trades Table -->
+        <div class="glass-card full-width mt-24">
+          <div class="card-header">
+            <h4 class="card-title"><i class="fas fa-history"></i> تاريخ الصفقات</h4>
+            <div class="card-actions">
+              <select id="tradesFilter" class="premium-select" onchange="refreshTrades()">
+                <option value="all">جميع الصفقات</option>
+                <option value="open">مفتوحة فقط</option>
+                <option value="closed">مغلقة فقط</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-content overflow-x">
+            <table class="premium-table" id="tradesTable">
+              <thead>
+                <tr>
+                  <th>الزوج</th>
+                  <th>النوع</th>
+                  <th>الاتجاه</th>
+                  <th>الكمية</th>
+                  <th>السعر</th>
+                  <th>الهدف</th>
+                  <th>الحالة</th>
+                  <th>P&L</th>
+                  <th>الوقت</th>
+                </tr>
+              </thead>
+              <tbody id="tradesTableBody"></tbody>
+            </table>
+            <div class="empty-placeholder" id="tradesEmpty">
+              <i class="fas fa-folder-open"></i>
+              <p>لا توجد بيانات صفقات حالياً</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Section -->
+        <div class="glass-card full-width mt-24" id="settingsView">
+          <div class="card-header">
+            <h4 class="card-title"><i class="fas fa-sliders-h"></i> إعدادات التداول</h4>
+          </div>
+          <div class="card-content">
+            <div class="settings-modern-grid">
+              <div class="setting-card">
+                <span class="label">وضع التشغيل</span>
+                <div class="value" id="settingDryRun">—</div>
+              </div>
+              <div class="setting-card">
+                <span class="label">التداول التلقائي</span>
+                <div class="value" id="settingAutoTrade">—</div>
+              </div>
+              <div class="setting-card">
+                <span class="label">المبلغ لكل صفقة</span>
+                <div class="value" id="settingAmount">—</div>
+              </div>
+              <div class="setting-card">
+                <span class="label">حد أدنى Score</span>
+                <div class="value" id="settingMinScore">—</div>
+              </div>
+              <div class="setting-card">
+                <span class="label">TP1 %</span>
+                <div class="value" id="settingTP1">—</div>
+              </div>
+              <div class="setting-card">
+                <span class="label">TP2 %</span>
+                <div class="value" id="settingTP2">—</div>
+              </div>
+              <div class="setting-card">
+                <span class="label">TP3 %</span>
+                <div class="value" id="settingTP3">—</div>
+              </div>
+              <div class="setting-card">
+                <span class="label">TP4 %</span>
+                <div class="value" id="settingTP4">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Footer -->
+      <footer class="app-footer">
+        <div class="footer-content">
+          <span>Shaabane Signals Bot v2.0 — Algo Trading Hub</span>
+          <span class="refresh-time" id="lastUpdate">آخر تحديث: —</span>
+        </div>
+      </footer>
     </div>
-    <div class="header-right">
-      <div class="status-badge" id="statusBadge">
-        <span class="status-dot"></span>
-        <span class="status-text">جاري الاتصال...</span>
-      </div>
-      <div class="mode-badge" id="modeBadge">
-        <span>🧪 DRY RUN</span>
-      </div>
-      <div class="balance-display" id="balanceDisplay">
-        <span class="balance-label">USDT</span>
-        <span class="balance-value" id="balanceValue">—</span>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main Content -->
-  <main class="main-content">
-    <!-- Stats Row -->
-    <section class="stats-grid" id="statsGrid">
-      <div class="stat-card" id="cardTotalSignals">
-        <div class="stat-icon signals-icon">📡</div>
-        <div class="stat-info">
-          <span class="stat-label">إجمالي الإشارات</span>
-          <span class="stat-value" id="totalSignals">0</span>
-        </div>
-        <div class="stat-sub" id="todaySignals">اليوم: 0</div>
-      </div>
-      <div class="stat-card" id="cardOpenTrades">
-        <div class="stat-icon trades-icon">📊</div>
-        <div class="stat-info">
-          <span class="stat-label">صفقات مفتوحة</span>
-          <span class="stat-value" id="openTrades">0</span>
-        </div>
-        <div class="stat-sub" id="totalTrades">الإجمالي: 0</div>
-      </div>
-      <div class="stat-card" id="cardWinRate">
-        <div class="stat-icon winrate-icon">🎯</div>
-        <div class="stat-info">
-          <span class="stat-label">نسبة النجاح</span>
-          <span class="stat-value" id="winRate">0%</span>
-        </div>
-        <div class="stat-sub"><span id="winCount">0</span> ✅ / <span id="lossCount">0</span> ❌</div>
-      </div>
-      <div class="stat-card" id="cardPnl">
-        <div class="stat-icon pnl-icon">💰</div>
-        <div class="stat-info">
-          <span class="stat-label">إجمالي الأرباح</span>
-          <span class="stat-value pnl-value" id="totalPnl">$0.00</span>
-        </div>
-        <div class="stat-sub">اليوم: <span id="todayPnl">$0.00</span></div>
-      </div>
-    </section>
-
-    <!-- Two Column Layout -->
-    <div class="content-grid">
-      <!-- Active Signals Panel -->
-      <section class="panel" id="signalsPanel">
-        <div class="panel-header">
-          <h2 class="panel-title">
-            <span class="panel-icon">📡</span>
-            الإشارات النشطة
-          </h2>
-          <div class="panel-actions">
-            <button class="btn btn-sm btn-ghost" onclick="refreshSignals()" id="refreshSignalsBtn">🔄 تحديث</button>
-          </div>
-        </div>
-        <div class="panel-body" id="signalsBody">
-          <div class="empty-state" id="signalsEmpty">
-            <span class="empty-icon">📡</span>
-            <p>في انتظار إشارات جديدة...</p>
-            <span class="empty-sub">سيتم عرض الإشارات فور وصولها من القناة</span>
-          </div>
-          <div class="signals-list" id="signalsList"></div>
-        </div>
-      </section>
-
-      <!-- Activity Log Panel -->
-      <section class="panel" id="activityPanel">
-        <div class="panel-header">
-          <h2 class="panel-title">
-            <span class="panel-icon">📋</span>
-            سجل الأحداث
-          </h2>
-          <div class="panel-actions">
-            <button class="btn btn-sm btn-ghost" onclick="refreshActivity()" id="refreshActivityBtn">🔄</button>
-          </div>
-        </div>
-        <div class="panel-body activity-scroll" id="activityBody">
-          <div class="empty-state" id="activityEmpty">
-            <span class="empty-icon">📋</span>
-            <p>لا توجد أحداث بعد</p>
-          </div>
-          <div class="activity-list" id="activityList"></div>
-        </div>
-      </section>
-    </div>
-
-    <!-- Trades Table -->
-    <section class="panel full-width" id="tradesPanel">
-      <div class="panel-header">
-        <h2 class="panel-title">
-          <span class="panel-icon">💹</span>
-          سجل الصفقات
-        </h2>
-        <div class="panel-actions">
-          <select id="tradesFilter" class="select-filter" onchange="refreshTrades()">
-            <option value="all">جميع الصفقات</option>
-            <option value="open">مفتوحة</option>
-            <option value="closed">مغلقة</option>
-          </select>
-        </div>
-      </div>
-      <div class="panel-body" id="tradesBody">
-        <div class="empty-state" id="tradesEmpty">
-          <span class="empty-icon">💹</span>
-          <p>لا توجد صفقات بعد</p>
-        </div>
-        <div class="table-wrapper" id="tradesTableWrapper" style="display:none;">
-          <table class="data-table" id="tradesTable">
-            <thead>
-              <tr>
-                <th>الزوج</th>
-                <th>النوع</th>
-                <th>الاتجاه</th>
-                <th>الكمية</th>
-                <th>السعر</th>
-                <th>الهدف</th>
-                <th>الحالة</th>
-                <th>P&L</th>
-                <th>الوقت</th>
-              </tr>
-            </thead>
-            <tbody id="tradesTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- Settings Panel -->
-    <section class="panel full-width" id="settingsPanel">
-      <div class="panel-header">
-        <h2 class="panel-title">
-          <span class="panel-icon">⚙️</span>
-          الإعدادات
-        </h2>
-      </div>
-      <div class="panel-body settings-body">
-        <div class="settings-grid">
-          <div class="setting-item">
-            <label>وضع التشغيل</label>
-            <div class="setting-value" id="settingDryRun">—</div>
-          </div>
-          <div class="setting-item">
-            <label>التداول التلقائي</label>
-            <div class="setting-value" id="settingAutoTrade">—</div>
-          </div>
-          <div class="setting-item">
-            <label>المبلغ لكل صفقة</label>
-            <div class="setting-value" id="settingAmount">—</div>
-          </div>
-          <div class="setting-item">
-            <label>حد أدنى Score</label>
-            <div class="setting-value" id="settingMinScore">—</div>
-          </div>
-          <div class="setting-item">
-            <label>TP1 %</label>
-            <div class="setting-value" id="settingTP1">—</div>
-          </div>
-          <div class="setting-item">
-            <label>TP2 %</label>
-            <div class="setting-value" id="settingTP2">—</div>
-          </div>
-          <div class="setting-item">
-            <label>TP3 %</label>
-            <div class="setting-value" id="settingTP3">—</div>
-          </div>
-          <div class="setting-item">
-            <label>TP4 %</label>
-            <div class="setting-value" id="settingTP4">—</div>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <!-- Footer -->
-  <footer class="footer">
-    <span>Shaabane Signals Bot v1.0 — MEXC Auto Trader</span>
-    <span id="lastUpdate">آخر تحديث: —</span>
-  </footer>
+  </div>
 
   <script src="app.js"></script>
 </body>
