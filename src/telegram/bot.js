@@ -297,14 +297,19 @@ async function startBot(onSignal) {
 }
 
 /**
- * Stop the Telegram UserBot Client
+ * Send a message to the user (Saved Messages)
  */
-async function stopBot() {
-  logger.info('🛑 Stopping Telegram UserBot...');
-  await cleanupClient();
+async function sendMessage(text) {
+  if (!client || !client.connected) return;
+  try {
+    await client.sendMessage('me', { message: text });
+  } catch (err) {
+    logger.error('Failed to send Telegram message', { error: err.message });
+  }
 }
 
 module.exports = {
   startBot,
   stopBot,
+  sendMessage,
 };

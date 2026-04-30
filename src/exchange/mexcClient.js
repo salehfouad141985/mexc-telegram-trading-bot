@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const axios = require('axios');
+const axiosRetry = require('axios-retry').default;
 const config = require('../config');
 const logger = require('../utils/logger');
 
@@ -16,6 +17,19 @@ class MexcClient {
       headers: {
         'X-MEXC-APIKEY': this.apiKey,
         'Content-Type': 'application/json',
+      },
+    });
+
+    // Configure retries
+    axiosRetry(this.client, {
+      retries: 3,
+      retryDelay: (retryCount) => {
+        logger.warn(`🔄 Retrying MEXC API call (attempt ${retryCount})...`);
+        return retryCount * 2000; // 2s, 4s, 6s
+      },
+      retryCondition: (error) => {
+        return axiosRetry.isNetworkOrIdempotentRequestError(error) || 
+               (error.response && (error.response.status >= 500 || error.response.status === 429));
       },
     });
   }
@@ -107,6 +121,30 @@ class MexcClient {
   }
 
   /**
+   * Get all symbol prices
+   */
+  async getAllPrices() {
+    try {
+      const res = await this.client.get('/api/v3/ticker/price');
+      return res.data; // Array of {symbol, price}
+    } catch (err) {
+      logger.error('Failed to get all prices', { error: err.message });
+      throw err;
+    }
+  }
+  async getDepth(symbol, limit = 5) {
+    try {
+      const res = await this.client.get('/api/v3/depth', {
+        params: { symbol, limit },
+      });
+      return res.data;
+    } catch (err) {
+      logger.error('Failed to get depth', { error: err.message, symbol });
+      throw err;
+    }
+  }
+
+  /**
    * Get 24hr ticker stats
    */
   async get24hrTicker(symbol) {
@@ -152,15 +190,16 @@ class MexcClient {
 
   /**
    * Place a new order
-   * @param {object} params - { symbol, side, type, quantity, price? }
+   * @param {object} params - { symbol, side, type, quantity, price?, stopPrice? }
    */
-  async createOrder({ symbol, side, type, quantity, price, quoteOrderQty }) {
+  async createOrder({ symbol, side, type, quantity, price, quoteOrderQty, stopPrice }) {
     try {
       const orderParams = { symbol, side, type };
 
       if (quantity) orderParams.quantity = quantity;
       if (price) orderParams.price = price;
       if (quoteOrderQty) orderParams.quoteOrderQty = quoteOrderQty;
+      if (stopPrice) orderParams.stopPrice = stopPrice;
 
       const signedParams = this.buildSignedParams(orderParams);
 

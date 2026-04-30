@@ -72,7 +72,17 @@ function initDatabase() {
       value TEXT NOT NULL,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- Add sl_order_id to signals if it doesn't exist
+    PRAGMA table_info(signals);
   `);
+
+  try {
+    db.exec(`ALTER TABLE signals ADD COLUMN sl_order_id TEXT;`);
+    logger.info('✅ Added sl_order_id column to signals table');
+  } catch (err) {
+    // Column likely already exists, ignore
+  }
 
   logger.info('✅ Database initialized successfully');
 }
@@ -91,6 +101,10 @@ const insertSignal = db.prepare(`
 
 const updateSignalStatus = db.prepare(`
   UPDATE signals SET status = @status, updated_at = CURRENT_TIMESTAMP WHERE id = @id
+`);
+
+const updateSlOrderId = db.prepare(`
+  UPDATE signals SET sl_order_id = @sl_order_id, updated_at = CURRENT_TIMESTAMP WHERE id = @id
 `);
 
 const getSignalById = db.prepare('SELECT * FROM signals WHERE id = ?');
@@ -190,6 +204,7 @@ module.exports = {
   // Signals
   insertSignal,
   updateSignalStatus,
+  updateSlOrderId,
   getSignalById,
   getActiveSignals,
   getAllSignals,

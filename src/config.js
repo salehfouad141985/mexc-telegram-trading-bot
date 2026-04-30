@@ -23,6 +23,7 @@ const config = {
     minScore: parseFloat(process.env.MIN_SCORE) || 7,
     autoTrade: process.env.AUTO_TRADE === 'true',
     dryRun: process.env.DRY_RUN !== 'false', // default true for safety
+    maxSpreadPercent: parseFloat(process.env.MAX_SPREAD_PERCENT) || 1.0,
   },
 
   // Risk Management — target allocation percentages

@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const mexcClient = require('../exchange/mexcClient');
 const tradeManager = require('./tradeManager');
 const db = require('../database/db');
+const notifier = require('../utils/notifier');
 
 let monitorInterval = null;
 const POLL_INTERVAL = 10000; // 10 seconds
@@ -53,9 +54,22 @@ async function checkPrices() {
   const activeSignals = db.getActiveSignals.all();
   if (activeSignals.length === 0) return;
 
+  // Optimization: Fetch all prices in one call to avoid rate limits
+  let allPrices = {};
+  try {
+    const pricesArray = await mexcClient.getAllPrices();
+    allPrices = pricesArray.reduce((acc, item) => {
+      acc[item.symbol] = parseFloat(item.price);
+      return acc;
+    }, {});
+  } catch (err) {
+    logger.error('Failed to fetch all prices for monitor', { error: err.message });
+    return;
+  }
+
   for (const signal of activeSignals) {
     try {
-      const currentPrice = await mexcClient.getSymbolPrice(signal.symbol);
+      const currentPrice = allPrices[signal.symbol];
       if (!currentPrice) continue;
 
       // Initialize tracking set for this signal if not exists
@@ -109,6 +123,9 @@ async function checkPrices() {
           logged.add(tp.label);
           logger.info(`🎯 ${tp.label} reached: ${signal.symbol} @ $${currentPrice} (Target: $${tp.price})`);
           db.logActivity('TP_REACHED', `${tp.label} reached: ${signal.symbol} @ $${currentPrice}`);
+          
+          // Execute the Take Profit sell and update the exchange SL
+          await handleTakeProfit(signal, tp, currentPrice, dynamicSL);
         }
       }
 
@@ -129,6 +146,90 @@ async function checkPrices() {
     }
   }
 }
+
+/**
+ * Handle take profit target reached
+ */
+async function handleTakeProfit(signal, target, currentPrice, newSL) {
+  try {
+    const trades = db.getTradesBySignalId.all(signal.id);
+    const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING' || t.status === 'SIMULATED'));
+    const sellTrades = trades.filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'));
+    
+    if (buyTrades.length === 0) return;
+
+    const totalBought = buyTrades.reduce((sum, t) => sum + t.quantity, 0);
+    const totalSold = sellTrades.reduce((sum, t) => sum + t.quantity, 0);
+    const currentRemaining = totalBought - totalSold;
+
+    if (currentRemaining <= 0) return;
+
+    // Calculate qty for this TP
+    const tpPct = target.pct || 25; // fallback
+    let sellQty = Math.floor((totalBought * tpPct / 100) * 100) / 100;
+    
+    // Don't sell more than we have
+    sellQty = Math.min(sellQty, currentRemaining);
+    if (sellQty <= 0) return;
+
+    logger.info(`📈 Executing ${target.label} Market Sell: ${signal.symbol} | Qty: ${sellQty}`);
+
+    let sellResult;
+    if (!config.trading.dryRun) {
+      sellResult = await mexcClient.createOrder({
+        symbol: signal.symbol,
+        side: 'SELL',
+        type: 'MARKET',
+        quantity: sellQty,
+      });
+    } else {
+      sellResult = { orderId: `DRY_TP_${Date.now()}` };
+    }
+
+    // Record the trade
+    const pnl = (currentPrice - signal.entry_price) * sellQty;
+    const pnlPercent = ((currentPrice - signal.entry_price) / signal.entry_price) * 100;
+
+    const tpMsg = `📈 ${target.label} Executed: ${signal.symbol} | P&L: $${pnl.toFixed(4)} (${pnlPercent.toFixed(2)}%)`;
+    notifier.sendNotification(tpMsg);
+
+    db.insertTrade.run({
+      signal_id: signal.id,
+      symbol: signal.symbol,
+      side: 'SELL',
+      type: 'MARKET',
+      quantity: sellQty,
+      price: currentPrice,
+      order_id: sellResult.orderId,
+      mexc_order_id: !config.trading.dryRun ? sellResult.orderId : null,
+      status: config.trading.dryRun ? 'SIMULATED' : 'FILLED',
+      target_label: target.label,
+      is_dry_run: config.trading.dryRun ? 1 : 0
+    });
+
+    db.logActivity('TP_EXECUTED', `${target.label} executed: ${signal.symbol} P&L: $${pnl.toFixed(4)}`);
+
+    // Update the SL order on the exchange for the remaining quantity
+    const nextRemaining = Math.floor((currentRemaining - sellQty) * 100) / 100;
+    
+    if (nextRemaining > 0) {
+      logger.info(`🔄 Updating exchange Stop Loss for remaining ${nextRemaining} ${signal.symbol}...`);
+      await tradeManager.placeStopLossOrder(signal, nextRemaining, newSL, config.trading.dryRun);
+    } else {
+      // All positions closed via TPs
+      db.updateSignalStatus.run({ id: signal.id, status: 'COMPLETED' });
+      
+      // Cancel the final SL order if it exists
+      if (!config.trading.dryRun && signal.sl_order_id) {
+        await mexcClient.cancelOrder(signal.symbol, signal.sl_order_id).catch(() => {});
+      }
+    }
+
+  } catch (err) {
+    logger.error(`❌ TP Execution failed: ${target.label}`, { error: err.message });
+  }
+}
+
 
 /**
  * Handle stop loss trigger — cancel open TP orders and market sell
@@ -179,7 +280,9 @@ async function handleStopLoss(signal, currentPrice) {
           });
 
           const pnl = (currentPrice - signal.entry_price) * sellQty;
-          logger.warn(`🔴 SL SELL executed: ${signal.symbol} | Qty: ${sellQty} | Loss: $${pnl.toFixed(4)}`);
+          const slMsg = `🔴 SL Executed: ${signal.symbol} | Loss: $${pnl.toFixed(4)}`;
+          logger.warn(slMsg);
+          notifier.sendNotification(slMsg);
           db.logActivity('SL_EXECUTED', `Stop loss executed: ${signal.symbol} Qty: ${sellQty} Loss: $${pnl.toFixed(4)}`);
         } else {
           logger.warn(`⚠️ No ${tokenSymbol} balance to sell for SL`);

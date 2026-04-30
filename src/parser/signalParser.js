@@ -90,9 +90,15 @@ class SignalParser {
    * Extract coin symbol from text (e.g., #FOGO → FOGO)
    */
   extractSymbol(text) {
-    // Match #SYMBOL pattern
-    const match = text.match(/#([A-Za-z0-9]+)/);
-    return match ? match[1].toUpperCase() : null;
+    // 1. Try hashtag format: #FOGO
+    const hashtagMatch = text.match(/#([A-Za-z0-9]+)/);
+    if (hashtagMatch) return hashtagMatch[1].toUpperCase();
+
+    // 2. Try pattern: "SYMBOL |" or "SYMBOL -" at the start
+    const startMatch = text.match(/^([A-Za-z0-9]{2,10})\s*[|\-\/]/);
+    if (startMatch) return startMatch[1].toUpperCase();
+
+    return null;
   }
 
   /**
@@ -122,10 +128,18 @@ class SignalParser {
   }
 
   /**
-   * Extract entry price
+   * Extract entry price (supports ranges like 0.02 - 0.025)
    */
   extractEntry(text) {
-    // Match "Entry: $0.02051" or "Entry $0.02051" or "Entry: 0.02051"
+    // 1. Try range format: "Entry: $0.02 - $0.025"
+    const rangeMatch = text.match(/entry[:\s]*\$?([\d.]+)\s*-\s*\$?([\d.]+)/i);
+    if (rangeMatch) {
+      const p1 = parseFloat(rangeMatch[1]);
+      const p2 = parseFloat(rangeMatch[2]);
+      return (p1 + p2) / 2; // Return average
+    }
+
+    // 2. Try standard format: "Entry: $0.02051"
     const match = text.match(/entry[:\s]*\$?([\d.]+)/i);
     return match ? parseFloat(match[1]) : null;
   }

@@ -2,6 +2,7 @@ const config = require('../config');
 const logger = require('../utils/logger');
 const mexcClient = require('../exchange/mexcClient');
 const db = require('../database/db');
+const notifier = require('../utils/notifier');
 
 class TradeManager {
   constructor() {
@@ -14,6 +15,9 @@ class TradeManager {
    */
   async handleSignal(signal) {
     try {
+      // Send notification about new signal
+      notifier.sendNotification(`🎯 *New Signal*: ${signal.symbol}\nScore: ${signal.score}\nEntry: ${signal.entry}`);
+
       // Check minimum score filter
       if (signal.score && signal.score < config.trading.minScore) {
         logger.info(`⏭️ Signal skipped (score ${signal.score} < ${config.trading.minScore}): ${signal.symbol}`);
@@ -83,10 +87,33 @@ class TradeManager {
         }
       }
 
-      // Step 3: Get current price and validate tolerance
+      // Step 3: Get current price and validate tolerance + spread
       let currentPrice;
       if (!isDryRun) {
-        currentPrice = await mexcClient.getSymbolPrice(signal.symbol);
+        // Fetch current price and depth for spread check
+        const [price, depth] = await Promise.all([
+          mexcClient.getSymbolPrice(signal.symbol),
+          mexcClient.getDepth(signal.symbol, 5)
+        ]);
+        
+        currentPrice = price;
+
+        // Spread check
+        if (depth.asks && depth.bids && depth.asks.length > 0 && depth.bids.length > 0) {
+          const bestAsk = parseFloat(depth.asks[0][0]);
+          const bestBid = parseFloat(depth.bids[0][0]);
+          const spread = ((bestAsk - bestBid) / bestBid) * 100;
+          
+          if (spread > config.trading.maxSpreadPercent) {
+            const msg = `⚠️ High spread detected for ${signal.symbol}: ${spread.toFixed(2)}% > ${config.trading.maxSpreadPercent}%`;
+            logger.warn(msg);
+            notifier.sendNotification(msg);
+            db.logActivity('SKIP', `High spread: ${signal.symbol} ${spread.toFixed(2)}%`);
+            db.updateSignalStatus.run({ id: signal.id, status: 'SKIPPED_HIGH_SPREAD' });
+            return;
+          }
+          logger.info(`📊 Spread for ${signal.symbol}: ${spread.toFixed(2)}% (OK)`);
+        }
       } else {
         currentPrice = await mexcClient.getSymbolPrice(signal.symbol);
         if (!currentPrice) currentPrice = signal.entry;
@@ -95,7 +122,9 @@ class TradeManager {
       const maxAllowedPrice = signal.entry * 1.005; // 0.5% above entry
       
       if (currentPrice > maxAllowedPrice) {
-        logger.warn(`⚠️ Current price ($${currentPrice}) is > 0.5% above entry ($${signal.entry}). Skipping trade for ${signal.symbol}.`);
+        const msg = `⚠️ Current price ($${currentPrice}) is > 0.5% above entry ($${signal.entry}). Skipping ${signal.symbol}.`;
+        logger.warn(msg);
+        notifier.sendNotification(msg);
         db.logActivity('SKIP', `Price too high: ${signal.symbol} @ $${currentPrice} (max: $${maxAllowedPrice.toFixed(4)})`);
         db.updateSignalStatus.run({ id: signal.id, status: 'SKIPPED_HIGH_PRICE' });
         return;
@@ -159,6 +188,7 @@ class TradeManager {
 
       const msg = `${isDryRun ? '🧪' : '✅'} BUY order placed: ${signal.symbol} | Qty: ${quantity} @ $${signal.entry}`;
       logger.info(msg);
+      notifier.sendNotification(msg);
       db.logActivity('TRADE', msg, {
         orderId: buyOrderResult.orderId,
         symbol: signal.symbol,
@@ -167,13 +197,14 @@ class TradeManager {
         isDryRun,
       });
 
-      // Step 5: Wait for BUY order to be filled, then place TP SELL orders
+      // Step 5: Wait for BUY order to be filled, then place Stop Loss and TP orders
       if (!isDryRun) {
-        // Wait a bit for the order to fill (market buy or limit at current price)
-        logger.info(`⏳ Waiting for BUY order to fill before placing TP orders...`);
+        logger.info(`⏳ Waiting for BUY order to fill before placing exchange-side SL...`);
         await this.waitForFillAndPlaceTargets(signal, buyOrderResult.orderId, quantity);
       } else {
-        await this.placeTargetOrders(signal, quantity, isDryRun);
+        // In dry run, we just simulate the setup
+        await this.placeStopLossOrder(signal, quantity, signal.stopLoss, true);
+        await this.placeTargetOrders(signal, quantity, true);
       }
 
       // Store active trade for monitoring
@@ -206,11 +237,15 @@ class TradeManager {
         
         if (orderStatus.status === 'FILLED' || orderStatus.status === 'PARTIALLY_FILLED') {
           const filledQty = parseFloat(orderStatus.executedQty) || quantity;
-          logger.info(`✅ BUY order FILLED! Qty: ${filledQty} — Now placing TP SELL orders...`);
+          logger.info(`✅ BUY order FILLED! Qty: ${filledQty} — Now placing Stop Loss on exchange...`);
           db.logActivity('FILLED', `BUY filled: ${signal.symbol} Qty: ${filledQty}`);
           
-          // Place TP sell orders with the filled quantity
-          await this.placeTargetOrders(signal, filledQty, false);
+          // Place Stop Loss order on exchange for the full quantity
+          // This ensures capital protection even if the bot goes offline
+          await this.placeStopLossOrder(signal, filledQty, signal.stopLoss, false);
+          
+          // Note: We don't place TP Limit orders here because MEXC locks funds for both.
+          // priceMonitor.js will handle TP hits by cancelling the SL and selling the portion.
           return;
         } else if (orderStatus.status === 'CANCELED' || orderStatus.status === 'REJECTED') {
           logger.warn(`⚠️ BUY order ${orderStatus.status} — no TP orders will be placed`);
@@ -229,6 +264,68 @@ class TradeManager {
     
     // If we get here, order didn't fill in time — DO NOT place TP orders anymore!
     logger.warn(`⚠️ BUY order not confirmed filled after ${maxAttempts} attempts — waiting for checkOpenOrders to handle it.`);
+  }
+
+  /**
+   * Place a native Stop Loss Market order on MEXC
+   */
+  async placeStopLossOrder(signal, quantity, stopPrice, isDryRun = false) {
+    if (!stopPrice) return null;
+
+    try {
+      let slResult;
+      if (!isDryRun) {
+        // Cancel existing SL order if any
+        if (signal.sl_order_id) {
+          try {
+            await mexcClient.cancelOrder(signal.symbol, signal.sl_order_id);
+          } catch (e) {
+            // Ignore if already filled or cancelled
+          }
+        }
+
+        slResult = await mexcClient.createOrder({
+          symbol: signal.symbol,
+          side: 'SELL',
+          type: 'STOP_LOSS_MARKET',
+          quantity: quantity,
+          stopPrice: stopPrice,
+        });
+      } else {
+        slResult = {
+          orderId: `DRY_SL_${Date.now()}`,
+          symbol: signal.symbol,
+          status: 'NEW'
+        };
+      }
+
+      // Save the SL order ID for future tracking/cancellation
+      db.updateSlOrderId.run({ id: signal.id, sl_order_id: slResult.orderId });
+      
+      // Also record in trades table for tracking status
+      db.insertTrade.run({
+        signal_id: signal.id,
+        symbol: signal.symbol,
+        side: 'SELL',
+        type: 'STOP_LOSS_MARKET',
+        quantity: quantity,
+        price: stopPrice,
+        order_id: slResult.orderId,
+        mexc_order_id: slResult.orderId || null,
+        status: isDryRun ? 'SIMULATED' : 'PENDING',
+        target_label: 'SL',
+        is_dry_run: isDryRun ? 1 : 0,
+      });
+
+      const msg = `${isDryRun ? '🧪' : '🛡️'} Exchange Stop Loss placed: ${signal.symbol} @ $${stopPrice}`;
+      logger.info(msg);
+      db.logActivity('SL_PLACED', msg);
+      
+      return slResult.orderId;
+    } catch (err) {
+      logger.error(`❌ Failed to place Stop Loss order on exchange`, { error: err.message });
+      return null;
+    }
   }
 
   /**
@@ -336,6 +433,11 @@ class TradeManager {
           const emoji = pnl >= 0 ? '🟢' : '🔴';
           logger.info(`${emoji} Order FILLED: ${trade.target_label} ${trade.symbol} @ $${executedPrice} | P&L: $${pnl.toFixed(4)}`);
           db.logActivity('FILLED', `${trade.target_label} filled: ${trade.symbol} P&L: $${pnl.toFixed(4)}`);
+
+          if (trade.target_label === 'SL') {
+            db.updateSignalStatus.run({ id: trade.signal_id, status: 'STOPPED' });
+            logger.warn(`🛑 Signal STOPPED due to exchange-side SL hit: ${trade.symbol}`);
+          }
 
           if (trade.side === 'BUY' && trade.target_label === 'ENTRY') {
             const existingTPs = db.getTradesBySignalId.all(trade.signal_id).filter(t => t.side === 'SELL');
