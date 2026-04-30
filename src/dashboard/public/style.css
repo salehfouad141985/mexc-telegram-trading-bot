@@ -612,29 +612,71 @@ body {
 /* ===== Settings Grid ===== */
 .settings-modern-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  padding: 10px 0;
 }
 
 .setting-card {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  padding: 16px;
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.setting-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(59, 130, 246, 0.3);
+  transform: translateY(-2px);
 }
 
 .setting-card .label {
-  display: block;
-  font-size: 0.7rem;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
   color: var(--text-muted);
-  margin-bottom: 4px;
+  margin-bottom: 12px;
+}
+
+.setting-card .label i {
+  color: var(--accent-blue);
+  font-size: 0.9rem;
 }
 
 .setting-card .value {
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-bright);
+}
+
+/* Custom styling for inputs inside cards */
+.setting-card .premium-input {
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.setting-card select.premium-input {
+  text-align: right;
+  padding-right: 12px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 12px center;
+  background-size: 16px;
+}
+
+/* Switch styling tweak */
+.input-wrapper .status-text {
+  margin-right: auto; /* Push to the opposite side of the switch in RTL */
+  margin-left: 10px;
 }
 
 /* ===== Utility Classes ===== */
@@ -833,3 +875,38 @@ input:checked + .slider:before {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* ===== Toast Notifications ===== */
+.toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  padding: 14px 24px;
+  border-radius: 50px;
+  color: white;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  transition: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+.toast-success { border-color: var(--accent-emerald); }
+.toast-success i { color: var(--accent-emerald); }
+.toast-error { border-color: var(--accent-rose); }
+.toast-error i { color: var(--accent-rose); }
+.toast-info { border-color: var(--accent-blue); }
+.toast-info i { color: var(--accent-blue); }

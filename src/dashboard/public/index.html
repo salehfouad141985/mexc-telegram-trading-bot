@@ -220,16 +220,16 @@
         <!-- Settings Section -->
         <div class="glass-card full-width mt-24" id="settingsView">
           <div class="card-header">
-            <h4 class="card-title"><i class="fas fa-sliders-h"></i> إعدادات التداول</h4>
+            <h4 class="card-title"><i class="fas fa-cog"></i> تخصيص إعدادات البوت</h4>
             <button class="premium-btn" onclick="saveSettings()" id="saveSettingsBtn">
-              <i class="fas fa-save"></i> حفظ التغييرات
+              <i class="fas fa-check-circle"></i> حفظ التغييرات
             </button>
           </div>
           <div class="card-content">
             <form id="settingsForm" onsubmit="event.preventDefault()">
               <div class="settings-modern-grid">
                 <div class="setting-card">
-                  <span class="label">وضع التشغيل (Dry Run)</span>
+                  <div class="label"><i class="fas fa-vial"></i> وضع التشغيل (Dry Run)</div>
                   <div class="input-wrapper">
                     <select id="inputDryRun" class="premium-input">
                       <option value="true">تجريبي (Test Mode)</option>
@@ -238,7 +238,7 @@
                   </div>
                 </div>
                 <div class="setting-card">
-                  <span class="label">التداول التلقائي</span>
+                  <div class="label"><i class="fas fa-robot"></i> التداول التلقائي</div>
                   <div class="input-wrapper">
                     <label class="switch">
                       <input type="checkbox" id="inputAutoTrade">
@@ -248,37 +248,37 @@
                   </div>
                 </div>
                 <div class="setting-card">
-                  <span class="label">المبلغ لكل صفقة (USDT)</span>
+                  <div class="label"><i class="fas fa-money-bill-wave"></i> المبلغ لكل صفقة (USDT)</div>
                   <div class="input-wrapper">
                     <input type="number" id="inputAmount" class="premium-input" placeholder="10">
                   </div>
                 </div>
                 <div class="setting-card">
-                  <span class="label">حد أدنى Score لقوة الإشارة</span>
+                  <div class="label"><i class="fas fa-chart-line"></i> الحد الأدنى لقوة الإشارة</div>
                   <div class="input-wrapper">
                     <input type="number" id="inputMinScore" class="premium-input" placeholder="7">
                   </div>
                 </div>
                 <div class="setting-card">
-                  <span class="label">توزيع الأهداف (TP1 %)</span>
+                  <div class="label"><i class="fas fa-bullseye"></i> توزيع الأهداف (TP1 %)</div>
                   <div class="input-wrapper">
                     <input type="number" id="inputTP1" class="premium-input" placeholder="30">
                   </div>
                 </div>
                 <div class="setting-card">
-                  <span class="label">توزيع الأهداف (TP2 %)</span>
+                  <div class="label"><i class="fas fa-bullseye"></i> توزيع الأهداف (TP2 %)</div>
                   <div class="input-wrapper">
                     <input type="number" id="inputTP2" class="premium-input" placeholder="30">
                   </div>
                 </div>
                 <div class="setting-card">
-                  <span class="label">توزيع الأهداف (TP3 %)</span>
+                  <div class="label"><i class="fas fa-bullseye"></i> توزيع الأهداف (TP3 %)</div>
                   <div class="input-wrapper">
                     <input type="number" id="inputTP3" class="premium-input" placeholder="25">
                   </div>
                 </div>
                 <div class="setting-card">
-                  <span class="label">توزيع الأهداف (TP4 %)</span>
+                  <div class="label"><i class="fas fa-bullseye"></i> توزيع الأهداف (TP4 %)</div>
                   <div class="input-wrapper">
                     <input type="number" id="inputTP4" class="premium-input" placeholder="15">
                   </div>

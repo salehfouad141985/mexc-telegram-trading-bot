@@ -252,18 +252,41 @@ async function saveSettings() {
   const originalHtml = btn.innerHTML;
   
   try {
+    // Basic Validation
+    const tp1 = parseFloat(document.getElementById('inputTP1').value);
+    const tp2 = parseFloat(document.getElementById('inputTP2').value);
+    const tp3 = parseFloat(document.getElementById('inputTP3').value);
+    const tp4 = parseFloat(document.getElementById('inputTP4').value);
+    const amount = parseFloat(document.getElementById('inputAmount').value);
+    const minScore = parseFloat(document.getElementById('inputMinScore').value);
+
+    if (isNaN(tp1) || isNaN(tp2) || isNaN(tp3) || isNaN(tp4) || isNaN(amount) || isNaN(minScore)) {
+      showToast('يرجى التأكد من إدخال قيم رقمية صحيحة في جميع الحقول', 'error');
+      return;
+    }
+
+    if (Math.round(tp1 + tp2 + tp3 + tp4) !== 100) {
+      showToast('مجموع نسب الأهداف يجب أن يكون 100%', 'error');
+      return;
+    }
+
+    if (amount <= 0) {
+      showToast('المبلغ يجب أن يكون أكبر من 0', 'error');
+      return;
+    }
+
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الحفظ...';
 
     const settings = {
       DRY_RUN: document.getElementById('inputDryRun').value,
       AUTO_TRADE: document.getElementById('inputAutoTrade').checked ? 'true' : 'false',
-      TRADE_AMOUNT_USDT: document.getElementById('inputAmount').value,
-      MIN_SCORE: document.getElementById('inputMinScore').value,
-      TP1_PERCENT: document.getElementById('inputTP1').value,
-      TP2_PERCENT: document.getElementById('inputTP2').value,
-      TP3_PERCENT: document.getElementById('inputTP3').value,
-      TP4_PERCENT: document.getElementById('inputTP4').value,
+      TRADE_AMOUNT_USDT: String(amount),
+      MIN_SCORE: String(minScore),
+      TP1_PERCENT: String(tp1),
+      TP2_PERCENT: String(tp2),
+      TP3_PERCENT: String(tp3),
+      TP4_PERCENT: String(tp4),
     };
 
     const res = await fetch(`${API_BASE}/api/settings`, {
@@ -274,27 +297,34 @@ async function saveSettings() {
 
     const result = await res.json();
     if (result.success) {
-      btn.innerHTML = '<i class="fas fa-check"></i> تم الحفظ بنجاح!';
-      btn.style.background = 'var(--accent-emerald)';
+      showToast('تم حفظ الإعدادات وتحديث البوت بنجاح', 'success');
       setTimeout(() => {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
-        btn.style.background = '';
-        fetchAll(); // Refresh everything
-      }, 2000);
+        fetchAll(); 
+      }, 1500);
     } else {
       throw new Error(result.error || 'Failed to save');
     }
   } catch (err) {
     console.error('Save error:', err);
-    btn.innerHTML = '<i class="fas fa-times"></i> خطأ في الحفظ';
-    btn.style.background = 'var(--accent-rose)';
-    setTimeout(() => {
-      btn.disabled = false;
-      btn.innerHTML = originalHtml;
-      btn.style.background = '';
-    }, 3000);
+    showToast('حدث خطأ أثناء حفظ الإعدادات', 'error');
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
   }
+}
+
+function showToast(msg, type = 'info') {
+  // Simple toast implementation or use existing if any
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${msg}`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.classList.add('show'), 100);
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 500);
+  }, 3000);
 }
 
 // ===========================
