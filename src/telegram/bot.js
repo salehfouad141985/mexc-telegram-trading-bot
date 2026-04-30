@@ -308,6 +308,13 @@ async function sendMessage(text) {
   }
 }
 
+/**
+ * Stop the bot and cleanup
+ */
+async function stopBot() {
+  await cleanupClient();
+}
+
 module.exports = {
   startBot,
   stopBot,
