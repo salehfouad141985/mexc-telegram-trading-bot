@@ -16,6 +16,7 @@ let lastStats = null;
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
   initSettingsListeners();
+  fetchConfig(); // Load config once at start
   fetchAll();
   setInterval(fetchAll, POLL_INTERVAL);
 });
@@ -67,7 +68,7 @@ async function fetchAll() {
       fetchSignals(),
       fetchTrades(),
       fetchActivity(),
-      fetchConfig(),
+      // fetchConfig(), // Removed from loop to prevent overwriting user typing
     ]);
 
     // Check if any failed
@@ -301,6 +302,7 @@ async function saveSettings() {
       setTimeout(() => {
         btn.disabled = false;
         btn.innerHTML = originalHtml;
+        fetchConfig(); // Refresh form values from DB
         fetchAll(); 
       }, 1500);
     } else {
