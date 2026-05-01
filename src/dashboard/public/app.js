@@ -353,11 +353,11 @@ function renderSignalCard(signal) {
     hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric'
   });
 
-  const floatingPnlHtml = signal.floating_pnl_percent ? `
+  const floatingPnlHtml = (signal.floating_pnl_percent !== undefined && signal.floating_pnl_percent !== null) ? `
     <div class="signal-floating-pnl ${parseFloat(signal.floating_pnl_percent) >= 0 ? 'text-emerald' : 'text-rose'}">
-      <i class="fas ${parseFloat(signal.floating_pnl_percent) >= 0 ? 'fa-caret-up' : 'fa-caret-down'}"></i>
+      <i class="fas ${parseFloat(signal.floating_pnl_percent) > 0 ? 'fa-caret-up' : parseFloat(signal.floating_pnl_percent) < 0 ? 'fa-caret-down' : 'fa-minus'}"></i>
       <span>${parseFloat(signal.floating_pnl_percent) >= 0 ? '+' : ''}${signal.floating_pnl_percent}%</span>
-      <span class="small">($${signal.floating_pnl_usdt})</span>
+      <span class="small">($${signal.floating_pnl_usdt || '0.00'})</span>
     </div>
   ` : '';
 
@@ -377,7 +377,7 @@ function renderSignalCard(signal) {
         </div>
         <div class="price-item">
           <span class="price-label">السعر الحالي</span>
-          <span class="price-value ${parseFloat(signal.floating_pnl_percent) >= 0 ? 'text-emerald' : 'text-rose'}">$${signal.current_price || '—'}</span>
+          <span class="price-value ${parseFloat(signal.floating_pnl_percent) > 0 ? 'text-emerald' : parseFloat(signal.floating_pnl_percent) < 0 ? 'text-rose' : ''}">$${signal.current_price || '—'}</span>
         </div>
         <div class="price-item">
           <span class="price-label">وقف الخسارة</span>

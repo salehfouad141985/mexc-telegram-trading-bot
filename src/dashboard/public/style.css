@@ -35,6 +35,16 @@
   --radius-sm: 8px;
 }
 
+/* ===== Utility Classes ===== */
+.text-emerald { color: var(--accent-emerald) !important; }
+.text-rose { color: var(--accent-rose) !important; }
+.text-warning { color: var(--accent-gold) !important; }
+.text-muted { color: var(--text-muted) !important; }
+.text-bright { color: var(--text-bright) !important; }
+.text-white { color: #ffffff !important; }
+.font-mono { font-family: var(--font-mono); }
+
+
 /* ===== Base Reset ===== */
 * {
   margin: 0;

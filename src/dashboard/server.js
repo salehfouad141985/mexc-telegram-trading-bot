@@ -73,6 +73,7 @@ app.get('/api/signals', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
     const signals = await db.getAllSignals(limit);
+    await enrichWithRealtimeData(signals);
     res.json(signals);
   } catch (err) {
     res.status(500).json({ error: err.message });
