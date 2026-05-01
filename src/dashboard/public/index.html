@@ -186,11 +186,18 @@
         <div class="glass-card full-width mt-24">
           <div class="card-header">
             <h4 class="card-title"><i class="fas fa-history"></i> تاريخ الصفقات</h4>
-            <div class="card-actions">
+            <div class="card-actions flex-wrap">
+              <div class="search-wrapper">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="tradesSearch" class="premium-input-small" placeholder="بحث بالعملة..." oninput="refreshTrades()">
+              </div>
               <select id="tradesFilter" class="premium-select" onchange="refreshTrades()">
-                <option value="all">جميع الصفقات</option>
-                <option value="open">مفتوحة فقط</option>
-                <option value="closed">مغلقة فقط</option>
+                <option value="all">جميع العمليات</option>
+                <option value="buy">شراء فقط</option>
+                <option value="sell">بيع فقط</option>
+                <option value="win">رابحة فقط</option>
+                <option value="loss">خاسرة فقط</option>
+                <option value="open">مفتوحة (Pending)</option>
               </select>
             </div>
           </div>

@@ -172,14 +172,28 @@ function refreshSignals() {
 
 async function fetchTrades() {
   const filter = document.getElementById('tradesFilter').value;
-  let url = `${API_BASE}/api/trades?limit=50`;
+  const search = (document.getElementById('tradesSearch')?.value || '').toUpperCase();
+  
+  let url = `${API_BASE}/api/trades?limit=100`;
   if (filter === 'open') url = `${API_BASE}/api/trades/open`;
 
   const res = await fetch(url);
   let trades = await res.json();
 
-  if (filter === 'closed') {
-    trades = trades.filter(t => ['FILLED', 'CLOSED', 'CANCELED'].includes(t.status));
+  // 1. Search Filter (Symbol)
+  if (search) {
+    trades = trades.filter(t => t.symbol.includes(search));
+  }
+
+  // 2. Type/Outcome Filters
+  if (filter === 'buy') {
+    trades = trades.filter(t => t.side === 'BUY');
+  } else if (filter === 'sell') {
+    trades = trades.filter(t => t.side === 'SELL');
+  } else if (filter === 'win') {
+    trades = trades.filter(t => parseFloat(t.pnl) > 0);
+  } else if (filter === 'loss') {
+    trades = trades.filter(t => parseFloat(t.pnl) < 0);
   }
 
   const emptyEl = document.getElementById('tradesEmpty');

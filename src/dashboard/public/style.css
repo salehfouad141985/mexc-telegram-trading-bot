@@ -929,6 +929,45 @@ input:checked + .slider:before {
   pointer-events: none;
 }
 
+.card-actions.flex-wrap {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+.premium-input-small {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  color: white;
+  padding: 6px 12px 6px 32px;
+  font-size: 0.85rem;
+  width: 180px;
+  transition: all 0.3s ease;
+  outline: none;
+}
+
+.premium-input-small:focus {
+  border-color: var(--accent-blue);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.2);
+}
+
 .toast.show {
   transform: translateX(-50%) translateY(0);
   opacity: 1;
