@@ -444,8 +444,8 @@ class TradeManager {
             if (existingTPs.length === 0) {
               const signal = await db.getSignalById(trade.signal_id);
               if (signal) {
-                logger.info(`🔄 Delayed ENTRY order filled for ${trade.symbol}. Placing TP orders...`);
-                await this.placeTargetOrders(signal, executedQty, false);
+                logger.info(`🔄 Delayed ENTRY order filled for ${trade.symbol}. Placing Stop Loss on exchange...`);
+                await this.placeStopLossOrder(signal, executedQty, signal.stop_loss, false);
               }
             }
           }
