@@ -53,6 +53,9 @@ async function checkPrices() {
   const activeSignals = await db.getActiveSignals();
   if (activeSignals.length === 0) return;
 
+  // New: Auto-heal missing SL orders
+  await ensureStopLossOrders(activeSignals);
+
   // Optimization: Fetch all prices in one call to avoid rate limits
   let allPrices = {};
   try {
@@ -295,6 +298,59 @@ async function handleStopLoss(signal, currentPrice) {
 
   } catch (err) {
     logger.error('Failed to handle stop loss', { error: err.message });
+  }
+}
+
+/**
+ * Ensure each active signal has an active Stop Loss order on the exchange
+ */
+async function ensureStopLossOrders(activeSignals) {
+  if (config.trading.dryRun) return;
+
+  for (const signal of activeSignals) {
+    try {
+      let isSLMissing = !signal.sl_order_id;
+      
+      // If we have an ID, check if it's still active on MEXC
+      if (signal.sl_order_id) {
+        try {
+          const order = await mexcClient.getOrder(signal.symbol, signal.sl_order_id);
+          if (['CANCELED', 'FILLED', 'REJECTED', 'EXPIRED'].includes(order.status)) {
+            isSLMissing = true;
+          }
+        } catch (err) {
+          // If order not found or error, treat as missing
+          isSLMissing = true;
+        }
+      }
+
+      if (isSLMissing) {
+        // Calculate remaining quantity
+        const trades = await db.getTradesBySignalId(signal.id);
+        const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING'));
+        const sellTrades = trades.filter(t => t.side === 'SELL' && t.status === 'FILLED');
+        
+        const totalBought = buyTrades.reduce((sum, t) => sum + t.quantity, 0);
+        const totalSold = sellTrades.reduce((sum, t) => sum + t.quantity, 0);
+        const currentRemaining = Math.floor((totalBought - totalSold) * 100) / 100;
+
+        if (currentRemaining > 0) {
+          logger.info(`🩹 SL Healing: Re-placing missing SL for ${signal.symbol} | Qty: ${currentRemaining}`);
+          
+          // Determine current SL price based on hit TPs
+          const tpHits = sellTrades.filter(t => t.target_label && t.target_label.startsWith('TP')).length;
+          let currentSL = signal.stop_loss;
+          
+          if (tpHits >= 1) currentSL = signal.entry_price;
+          if (tpHits >= 2) currentSL = signal.tp1;
+          if (tpHits >= 3) currentSL = signal.tp2;
+          
+          await tradeManager.placeStopLossOrder(signal, currentRemaining, currentSL, false);
+        }
+      }
+    } catch (err) {
+      logger.error(`❌ SL Healing failed for ${signal.symbol}`, { error: err.message });
+    }
   }
 }
 
