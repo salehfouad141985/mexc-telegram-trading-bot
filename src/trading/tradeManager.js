@@ -284,12 +284,16 @@ class TradeManager {
           }
         }
 
+        // MEXC V3 often requires STOP_LOSS_LIMIT instead of a pure STOP_LOSS (Market)
+        // We set price slightly lower (2%) than stopPrice to ensure it fills like a market order
+        const limitPrice = parseFloat((stopPrice * 0.98).toFixed(8)); 
+        
         slResult = await mexcClient.createOrder({
           symbol: signal.symbol,
           side: 'SELL',
-          type: 'STOP_LOSS', // MEXC uses STOP_LOSS for market stop loss
+          type: 'STOP_LOSS_LIMIT',
           quantity: quantity,
-          price: stopPrice,   // MEXC often requires price even for STOP_LOSS
+          price: limitPrice,
           stopPrice: stopPrice,
         });
       } else {
