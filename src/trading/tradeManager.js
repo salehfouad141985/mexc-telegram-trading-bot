@@ -287,8 +287,9 @@ class TradeManager {
         slResult = await mexcClient.createOrder({
           symbol: signal.symbol,
           side: 'SELL',
-          type: 'STOP_LOSS_MARKET',
+          type: 'STOP_LOSS', // MEXC uses STOP_LOSS for market stop loss
           quantity: quantity,
+          price: stopPrice,   // MEXC often requires price even for STOP_LOSS
           stopPrice: stopPrice,
         });
       } else {

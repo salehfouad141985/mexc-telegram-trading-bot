@@ -50,10 +50,9 @@ async function stopMonitoring() {
  */
 async function checkPrices() {
   const activeSignals = await db.getActiveSignals();
-  // logger.info(`🔍 Price monitor checking ${activeSignals.length} active signals...`);
+  console.log(`[DEBUG] Price monitor checking ${activeSignals.length} active signals...`);
   
-  // Heartbeat log every 10 cycles (approx 100s) if no signals, or every cycle if signals exist
-  if (activeSignals.length > 0 || Math.random() < 0.1) {
+  if (activeSignals.length > 0) {
     await db.logActivity('DEBUG_MONITOR', `Monitor loop running. Active signals: ${activeSignals.length}`);
   }
 

@@ -207,6 +207,7 @@ class MexcClient {
         type,
         quantity,
         price,
+        stopPrice,
       });
 
       const res = await this.client.post(`/api/v3/order?${signedParams}`);
