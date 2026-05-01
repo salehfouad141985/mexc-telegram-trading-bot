@@ -191,6 +191,10 @@
                 <i class="fas fa-search search-icon"></i>
                 <input type="text" id="tradesSearch" class="premium-input-small" placeholder="بحث بالعملة..." oninput="refreshTrades()">
               </div>
+              <div class="date-wrapper">
+                <i class="fas fa-calendar-alt search-icon"></i>
+                <input type="date" id="tradesDate" class="premium-input-small" onchange="refreshTrades()">
+              </div>
               <select id="tradesFilter" class="premium-select" onchange="refreshTrades()">
                 <option value="all">جميع العمليات</option>
                 <option value="buy">شراء فقط</option>

@@ -185,6 +185,15 @@ async function fetchTrades() {
     trades = trades.filter(t => t.symbol.includes(search));
   }
 
+  // 2. Date Filter
+  const dateFilter = document.getElementById('tradesDate')?.value;
+  if (dateFilter) {
+    trades = trades.filter(t => {
+      const tradeDate = new Date(t.created_at).toISOString().split('T')[0];
+      return tradeDate === dateFilter;
+    });
+  }
+
   // 2. Type/Outcome Filters
   if (filter === 'buy') {
     trades = trades.filter(t => t.side === 'BUY');
