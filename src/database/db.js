@@ -164,7 +164,7 @@ const trades = {
     const { data, error } = await supabase
       .from('bot_trades')
       .select('*, bot_signals(entry_price, stop_loss)')
-      .in('status', ['PENDING', 'FILLED', 'PARTIALLY_FILLED'])
+      .in('status', ['PENDING', 'PARTIALLY_FILLED'])
       .order('created_at', { ascending: false });
     
     if (error) return [];
