@@ -49,9 +49,14 @@ async function stopMonitoring() {
  * Check prices and handle SL/TP triggers
  */
 async function checkPrices() {
-  // We allow checkPrices to run even in dryRun to simulate TP/SL triggers in logs/UI
   const activeSignals = await db.getActiveSignals();
-  logger.info(`🔍 Price monitor checking ${activeSignals.length} active signals...`);
+  // logger.info(`🔍 Price monitor checking ${activeSignals.length} active signals...`);
+  
+  // Heartbeat log every 10 cycles (approx 100s) if no signals, or every cycle if signals exist
+  if (activeSignals.length > 0 || Math.random() < 0.1) {
+    await db.logActivity('DEBUG_MONITOR', `Monitor loop running. Active signals: ${activeSignals.length}`);
+  }
+
   if (activeSignals.length === 0) return;
 
   // New: Auto-heal missing SL orders
