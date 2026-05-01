@@ -51,6 +51,7 @@ async function stopMonitoring() {
 async function checkPrices() {
   // We allow checkPrices to run even in dryRun to simulate TP/SL triggers in logs/UI
   const activeSignals = await db.getActiveSignals();
+  logger.info(`🔍 Price monitor checking ${activeSignals.length} active signals...`);
   if (activeSignals.length === 0) return;
 
   // New: Auto-heal missing SL orders
@@ -305,7 +306,10 @@ async function handleStopLoss(signal, currentPrice) {
  * Ensure each active signal has an active Stop Loss order on the exchange
  */
 async function ensureStopLossOrders(activeSignals) {
-  if (config.trading.dryRun) return;
+  if (config.trading.dryRun) {
+    // logger.info('🧪 SL Healing skipped (Dry Run)');
+    return;
+  }
 
   for (const signal of activeSignals) {
     try {
@@ -316,19 +320,22 @@ async function ensureStopLossOrders(activeSignals) {
         try {
           const order = await mexcClient.getOrder(signal.symbol, signal.sl_order_id);
           if (['CANCELED', 'FILLED', 'REJECTED', 'EXPIRED'].includes(order.status)) {
+            logger.info(`🔍 SL Order ${signal.sl_order_id} for ${signal.symbol} is ${order.status}. Mark as missing.`);
             isSLMissing = true;
           }
         } catch (err) {
-          // If order not found or error, treat as missing
+          logger.info(`🔍 SL Order ${signal.sl_order_id} for ${signal.symbol} not found. Mark as missing.`);
           isSLMissing = true;
         }
       }
 
       if (isSLMissing) {
+        logger.info(`🩹 SL Healing: Checking position for ${signal.symbol}...`);
+        
         // Calculate remaining quantity
         const trades = await db.getTradesBySignalId(signal.id);
-        const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING'));
-        const sellTrades = trades.filter(t => t.side === 'SELL' && t.status === 'FILLED');
+        const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING' || t.status === 'SIMULATED'));
+        const sellTrades = trades.filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'));
         
         const totalBought = buyTrades.reduce((sum, t) => sum + t.quantity, 0);
         const totalSold = sellTrades.reduce((sum, t) => sum + t.quantity, 0);
@@ -345,7 +352,12 @@ async function ensureStopLossOrders(activeSignals) {
           if (tpHits >= 2) currentSL = signal.tp1;
           if (tpHits >= 3) currentSL = signal.tp2;
           
-          await tradeManager.placeStopLossOrder(signal, currentRemaining, currentSL, false);
+          const resultId = await tradeManager.placeStopLossOrder(signal, currentRemaining, currentSL, false);
+          if (resultId) {
+            logger.info(`✅ SL Healing Success: ${signal.symbol} | SL Order: ${resultId}`);
+          }
+        } else {
+          logger.info(`🔍 SL Healing: No remaining quantity for ${signal.symbol}. Skipping.`);
         }
       }
     } catch (err) {
