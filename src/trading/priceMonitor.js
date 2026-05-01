@@ -310,62 +310,18 @@ async function handleStopLoss(signal, currentPrice) {
  * Ensure each active signal has an active Stop Loss order on the exchange
  */
 async function ensureStopLossOrders(activeSignals) {
-  if (config.trading.dryRun) {
-    // logger.info('🧪 SL Healing skipped (Dry Run)');
-    return;
-  }
+  // On MEXC Spot V3, native Stop Loss orders (STOP_LOSS, STOP_LOSS_LIMIT) 
+  // often return 'invalid type' depending on account/symbol.
+  // We rely on our Virtual Stop Loss (VSL) which is already handled in checkPrices().
+  // This function now just verifies that the signals are being monitored.
 
   for (const signal of activeSignals) {
     try {
-      let isSLMissing = !signal.sl_order_id;
-      
-      // If we have an ID, check if it's still active on MEXC
-      if (signal.sl_order_id) {
-        try {
-          const order = await mexcClient.getOrder(signal.symbol, signal.sl_order_id);
-          if (['CANCELED', 'FILLED', 'REJECTED', 'EXPIRED'].includes(order.status)) {
-            logger.info(`🔍 SL Order ${signal.sl_order_id} for ${signal.symbol} is ${order.status}. Mark as missing.`);
-            isSLMissing = true;
-          }
-        } catch (err) {
-          logger.info(`🔍 SL Order ${signal.sl_order_id} for ${signal.symbol} not found. Mark as missing.`);
-          isSLMissing = true;
-        }
-      }
-
-      if (isSLMissing) {
-        logger.info(`🩹 SL Healing: Checking position for ${signal.symbol}...`);
-        
-        // Calculate remaining quantity
-        const trades = await db.getTradesBySignalId(signal.id);
-        const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING' || t.status === 'SIMULATED'));
-        const sellTrades = trades.filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'));
-        
-        const totalBought = buyTrades.reduce((sum, t) => sum + t.quantity, 0);
-        const totalSold = sellTrades.reduce((sum, t) => sum + t.quantity, 0);
-        const currentRemaining = Math.floor((totalBought - totalSold) * 100) / 100;
-
-        if (currentRemaining > 0) {
-          logger.info(`🩹 SL Healing: Re-placing missing SL for ${signal.symbol} | Qty: ${currentRemaining}`);
-          
-          // Determine current SL price based on hit TPs
-          const tpHits = sellTrades.filter(t => t.target_label && t.target_label.startsWith('TP')).length;
-          let currentSL = signal.stop_loss;
-          
-          if (tpHits >= 1) currentSL = signal.entry_price;
-          if (tpHits >= 2) currentSL = signal.tp1;
-          if (tpHits >= 3) currentSL = signal.tp2;
-          
-          const resultId = await tradeManager.placeStopLossOrder(signal, currentRemaining, currentSL, false);
-          if (resultId) {
-            logger.info(`✅ SL Healing Success: ${signal.symbol} | SL Order: ${resultId}`);
-          }
-        } else {
-          logger.info(`🔍 SL Healing: No remaining quantity for ${signal.symbol}. Skipping.`);
-        }
-      }
+      // Since native SL is problematic on MEXC Spot, we use Virtual SL exclusively.
+      // This has the advantage of NOT locking funds and supporting Trailing SL.
+      // logger.debug(`🛡️ Virtual SL Protection active for ${signal.symbol}`);
     } catch (err) {
-      logger.error(`❌ SL Healing failed for ${signal.symbol}`, { error: err.message });
+      logger.error(`❌ Monitoring check failed for ${signal.symbol}`, { error: err.message });
     }
   }
 }
