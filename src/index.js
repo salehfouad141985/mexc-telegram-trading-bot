@@ -135,7 +135,7 @@ async function syncBotState() {
     }
   }
 
-  if (isAuto && isLive) {
+  if (isAuto) {
     await priceMonitor.startMonitoring();
   } else {
     await priceMonitor.stopMonitoring();
