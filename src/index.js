@@ -107,6 +107,20 @@ async function main() {
   // Step 6: Start Price Monitor
   await syncBotState();
 
+  // Step 7: Schedule periodic maintenance (every 6 hours)
+  setInterval(async () => {
+    try {
+      await db.cleanupOldLogs();
+      await db.cleanupStaleSignals();
+    } catch (err) {
+      logger.error('Maintenance task error', { error: err.message });
+    }
+  }, 6 * 60 * 60 * 1000); // 6 hours
+
+  // Run initial cleanup on startup
+  await db.cleanupOldLogs();
+  await db.cleanupStaleSignals();
+
   // Graceful shutdown
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
@@ -142,11 +156,11 @@ async function syncBotState() {
   }
 }
 
-function shutdown() {
+async function shutdown() {
   logger.info('🛑 Shutting down...');
   telegramBot.stopBot();
-  priceMonitor.stopMonitoring();
-  db.logActivity('SYSTEM', 'Bot stopped');
+  await priceMonitor.stopMonitoring();
+  await db.logActivity('SYSTEM', 'Bot stopped');
   process.exit(0);
 }
 

@@ -50,11 +50,6 @@ async function stopMonitoring() {
  */
 async function checkPrices() {
   const activeSignals = await db.getActiveSignals();
-  console.log(`[DEBUG] Price monitor checking ${activeSignals.length} active signals...`);
-  
-  if (activeSignals.length > 0) {
-    await db.logActivity('DEBUG_MONITOR', `Monitor loop running. Active signals: ${activeSignals.length}`);
-  }
 
   if (activeSignals.length === 0) return;
 
@@ -119,10 +114,10 @@ async function checkPrices() {
 
       // Check Take Profits (log only once per target)
       const targets = [
-        { label: 'TP1', price: signal.tp1 },
-        { label: 'TP2', price: signal.tp2 },
-        { label: 'TP3', price: signal.tp3 },
-        { label: 'TP4', price: signal.tp4 },
+        { label: 'TP1', price: signal.tp1, pct: config.risk.tp1Percent },
+        { label: 'TP2', price: signal.tp2, pct: config.risk.tp2Percent },
+        { label: 'TP3', price: signal.tp3, pct: config.risk.tp3Percent },
+        { label: 'TP4', price: signal.tp4, pct: config.risk.tp4Percent },
       ];
 
       for (const tp of targets) {
@@ -165,8 +160,8 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
     
     if (buyTrades.length === 0) return;
 
-    const totalBought = buyTrades.reduce((sum, t) => sum + t.quantity, 0);
-    const totalSold = sellTrades.reduce((sum, t) => sum + t.quantity, 0);
+    const totalBought = buyTrades.reduce((sum, t) => sum + parseFloat(t.quantity), 0);
+    const totalSold = sellTrades.reduce((sum, t) => sum + parseFloat(t.quantity), 0);
     const currentRemaining = totalBought - totalSold;
 
     if (currentRemaining <= 0) return;
@@ -267,39 +262,73 @@ async function handleStopLoss(signal, currentPrice) {
       }
     }
 
-    // Market sell remaining position — look for BUY orders with ANY filled status
-    const entryTrade = trades.find((t) => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING'));
-    if (entryTrade) {
-      const remainingQty = entryTrade.quantity;
+    // Calculate remaining position correctly (total bought - total sold)
+    const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING' || t.status === 'SIMULATED'));
+    const sellTrades = trades.filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'));
+    const totalBought = buyTrades.reduce((sum, t) => sum + parseFloat(t.quantity), 0);
+    const totalSold = sellTrades.reduce((sum, t) => sum + parseFloat(t.quantity), 0);
+    const remainingQty = Math.floor((totalBought - totalSold) * 100) / 100;
 
+    if (remainingQty > 0) {
       try {
-        // First check if we actually hold the token
-        const balance = await mexcClient.getAccountInfo();
-        const tokenSymbol = signal.symbol.replace('USDT', '');
-        const tokenBalance = balance.balances?.find(b => b.asset === tokenSymbol);
-        const freeQty = tokenBalance ? parseFloat(tokenBalance.free) : 0;
+        let sellQty = remainingQty;
 
-        if (freeQty > 0) {
-          const sellQty = Math.min(remainingQty, freeQty);
-          
+        // In live mode, verify actual balance
+        if (!config.trading.dryRun) {
+          const balance = await mexcClient.getAccountInfo();
+          const tokenSymbol = signal.symbol.replace('USDT', '');
+          const tokenBalance = balance.balances?.find(b => b.asset === tokenSymbol);
+          const freeQty = tokenBalance ? parseFloat(tokenBalance.free) : 0;
+
+          if (freeQty <= 0) {
+            logger.warn(`⚠️ No ${tokenSymbol} balance to sell for SL`);
+            await db.updateSignalStatus(signal.id, 'STOPPED');
+            loggedTPReached.delete(signal.id);
+            return;
+          }
+          sellQty = Math.min(remainingQty, freeQty);
+        }
+
+        if (!config.trading.dryRun) {
           await mexcClient.createOrder({
             symbol: signal.symbol,
             side: 'SELL',
             type: 'MARKET',
             quantity: sellQty,
           });
-
-          const pnl = (currentPrice - signal.entry_price) * sellQty;
-          const slMsg = `🔴 SL Executed: ${signal.symbol} | Loss: $${pnl.toFixed(4)}`;
-          logger.warn(slMsg);
-          notifier.sendNotification(slMsg);
-          await db.logActivity('SL_EXECUTED', `Stop loss executed: ${signal.symbol} Qty: ${sellQty} Loss: $${pnl.toFixed(4)}`);
-        } else {
-          logger.warn(`⚠️ No ${tokenSymbol} balance to sell for SL`);
         }
+
+        const pnl = (currentPrice - parseFloat(signal.entry_price)) * sellQty;
+        const pnlPercent = ((currentPrice - parseFloat(signal.entry_price)) / parseFloat(signal.entry_price)) * 100;
+
+        // Record SL trade in database
+        await db.insertTrade({
+          signal_id: signal.id,
+          symbol: signal.symbol,
+          side: 'SELL',
+          type: 'MARKET',
+          quantity: sellQty,
+          price: currentPrice,
+          order_id: `SL_${Date.now()}`,
+          mexc_order_id: null,
+          status: config.trading.dryRun ? 'SIMULATED' : 'FILLED',
+          target_label: 'SL',
+          is_dry_run: config.trading.dryRun ? 1 : 0,
+          pnl: pnl,
+          pnl_percent: pnlPercent,
+          executed_price: currentPrice,
+          executed_qty: sellQty
+        });
+
+        const slMsg = `🔴 SL Executed: ${signal.symbol} | Loss: $${pnl.toFixed(4)} (${pnlPercent.toFixed(2)}%)`;
+        logger.warn(slMsg);
+        notifier.sendNotification(slMsg);
+        await db.logActivity('SL_EXECUTED', `Stop loss executed: ${signal.symbol} Qty: ${sellQty} P&L: $${pnl.toFixed(4)}`);
       } catch (sellErr) {
         logger.error('Failed to execute SL sell', { error: sellErr.message });
       }
+    } else {
+      logger.warn(`⚠️ No remaining quantity to sell for SL: ${signal.symbol}`);
     }
  
     await db.updateSignalStatus(signal.id, 'STOPPED');

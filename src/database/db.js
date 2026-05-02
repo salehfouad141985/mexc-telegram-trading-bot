@@ -229,6 +229,7 @@ async function getStats() {
     const { count: totalSignals } = await supabase.from('bot_signals').select('*', { count: 'exact', head: true });
     const { count: activeSignals } = await supabase.from('bot_signals').select('*', { count: 'exact', head: true }).in('status', ['NEW', 'ACTIVE', 'PARTIALLY_FILLED']);
     const { count: totalTrades } = await supabase.from('bot_trades').select('*', { count: 'exact', head: true });
+    const { count: openTradesCount } = await supabase.from('bot_trades').select('*', { count: 'exact', head: true }).in('status', ['PENDING', 'PARTIALLY_FILLED']);
     
     // Get only SELL trades for PnL calculation
     const { data: sellTrades } = await supabase
@@ -259,6 +260,7 @@ async function getStats() {
       totalSignals: totalSignals || 0,
       activeSignals: activeSignals || 0,
       totalTrades: totalTrades || 0,
+      openTrades: openTradesCount || 0,
       winTrades,
       lossTrades,
       winRate: (winTrades + lossTrades) > 0 ? ((winTrades / (winTrades + lossTrades)) * 100).toFixed(1) : '0.0',
@@ -302,6 +304,62 @@ async function updateSetting(key, value) {
   return true;
 }
 
+/**
+ * Cleanup old activity logs (older than 7 days)
+ */
+async function cleanupOldLogs() {
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    
+    const { error, count } = await supabase
+      .from('bot_activity_log')
+      .delete({ count: 'exact' })
+      .lt('created_at', cutoff.toISOString());
+    
+    if (error) {
+      logger.error('Failed to cleanup old logs', error);
+    } else if (count > 0) {
+      logger.info(`🧹 Cleaned up ${count} old activity log entries`);
+    }
+  } catch (err) {
+    logger.error('Log cleanup error', { error: err.message });
+  }
+}
+
+/**
+ * Cleanup stale ACTIVE signals (older than 7 days with no recent trades)
+ */
+async function cleanupStaleSignals() {
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    
+    const { data: staleSignals } = await supabase
+      .from('bot_signals')
+      .select('id, symbol')
+      .in('status', ['ACTIVE', 'NEW'])
+      .lt('created_at', cutoff.toISOString());
+    
+    if (!staleSignals || staleSignals.length === 0) return;
+    
+    for (const sig of staleSignals) {
+      await supabase
+        .from('bot_signals')
+        .update({ status: 'EXPIRED', updated_at: new Date() })
+        .eq('id', sig.id);
+      
+      logger.info(`🕰️ Signal expired: ${sig.symbol} (ID: ${sig.id})`);
+    }
+    
+    if (staleSignals.length > 0) {
+      await logActivity('SYSTEM', `Auto-expired ${staleSignals.length} stale signal(s)`);
+    }
+  } catch (err) {
+    logger.error('Stale signal cleanup error', { error: err.message });
+  }
+}
+
 module.exports = {
   supabase,
   initDatabase,
@@ -327,4 +385,7 @@ module.exports = {
   // Settings
   getSettings,
   updateSetting,
+  // Maintenance
+  cleanupOldLogs,
+  cleanupStaleSignals,
 };

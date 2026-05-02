@@ -384,6 +384,8 @@ class TradeManager {
           status: isDryRun ? 'SIMULATED' : 'PENDING',
           target_label: target.label,
           is_dry_run: isDryRun ? 1 : 0,
+          pnl: pnl,
+          pnl_percent: pnlPercent,
         });
 
         const msg = `${isDryRun ? '🧪' : '📈'} ${target.label} SELL: ${signal.symbol} | ${qty} @ $${target.price} (P&L: $${pnl.toFixed(4)})`;

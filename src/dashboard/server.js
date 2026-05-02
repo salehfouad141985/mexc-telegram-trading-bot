@@ -11,6 +11,19 @@ const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// Optional API authentication — set DASHBOARD_TOKEN env var to enable
+const DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN;
+if (DASHBOARD_TOKEN) {
+  app.use('/api', (req, res, next) => {
+    const auth = req.headers.authorization;
+    if (auth !== `Bearer ${DASHBOARD_TOKEN}`) {
+      return res.status(401).json({ error: 'Unauthorized — provide Bearer token' });
+    }
+    next();
+  });
+  logger.info('🔒 Dashboard API authentication enabled');
+}
+
 // Helper to get real-time prices for active signals
 async function enrichWithRealtimeData(signals) {
   if (!signals || signals.length === 0) return 0;
