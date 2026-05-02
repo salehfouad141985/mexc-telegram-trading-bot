@@ -123,7 +123,11 @@ const trades = {
         mexc_order_id: trade.mexc_order_id,
         status: trade.status || 'PENDING',
         target_label: trade.target_label,
-        is_dry_run: !!trade.is_dry_run
+        is_dry_run: !!trade.is_dry_run,
+        pnl: trade.pnl || null,
+        pnl_percent: trade.pnl_percent || null,
+        executed_price: trade.executed_price || trade.price || null,
+        executed_qty: trade.executed_qty || trade.quantity || null
       }])
       .select();
     
@@ -233,8 +237,8 @@ async function getStats() {
       .eq('side', 'SELL')
       .in('status', ['FILLED', 'SIMULATED']);
     
-    const winTrades = sellTrades?.filter(t => t.pnl > 0).length || 0;
-    const lossTrades = sellTrades?.filter(t => t.pnl < 0).length || 0;
+    const winTrades = sellTrades?.filter(t => parseFloat(t.pnl) > 0).length || 0;
+    const lossTrades = sellTrades?.filter(t => parseFloat(t.pnl) < 0).length || 0;
     const totalPnl = sellTrades?.reduce((sum, t) => sum + (parseFloat(t.pnl) || 0), 0) || 0;
 
     // Calculate today's stats

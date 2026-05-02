@@ -211,7 +211,11 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
       mexc_order_id: !config.trading.dryRun ? sellResult.orderId : null,
       status: config.trading.dryRun ? 'SIMULATED' : 'FILLED',
       target_label: target.label,
-      is_dry_run: config.trading.dryRun ? 1 : 0
+      is_dry_run: config.trading.dryRun ? 1 : 0,
+      pnl: pnl,
+      pnl_percent: pnlPercent,
+      executed_price: currentPrice,
+      executed_qty: sellQty
     });
  
     await db.logActivity('TP_EXECUTED', `${target.label} executed: ${signal.symbol} P&L: $${pnl.toFixed(4)}`);
