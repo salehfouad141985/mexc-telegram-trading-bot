@@ -4,6 +4,7 @@
  */
 
 const API_BASE = '';
+let cachedSignals = []; // Global store for signals to enable local filtering
 const POLL_INTERVAL = 4000;
 
 let pnlHistory = []; // For sparkline
@@ -150,23 +151,55 @@ async function fetchBalance() {
 }
 
 async function fetchSignals() {
-  const res = await fetch(`${API_BASE}/api/signals?limit=10`);
-  const signals = await res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/signals?limit=50`); // Increased limit for better filtering
+    cachedSignals = await res.json();
+    renderSignals(); // Initial render
+  } catch (err) {
+    console.error('Fetch signals error:', err);
+  }
+}
 
+/**
+ * Filters and renders signals based on search input and status filter
+ */
+function renderSignals() {
   const listEl = document.getElementById('signalsList');
   const emptyEl = document.getElementById('signalsEmpty');
+  const searchInput = (document.getElementById('signalsSearch')?.value || '').toUpperCase();
+  const statusFilter = document.getElementById('signalsFilter')?.value || 'active';
 
-  if (signals.length === 0) {
+  let filtered = [...cachedSignals];
+
+  // 1. Filter by Status
+  if (statusFilter !== 'all') {
+    if (statusFilter === 'active') {
+      filtered = filtered.filter(s => ['ACTIVE', 'NEW', 'PARTIALLY_FILLED'].includes(s.status));
+    } else if (statusFilter === 'completed') {
+      filtered = filtered.filter(s => s.status === 'COMPLETED');
+    } else if (statusFilter === 'stopped') {
+      filtered = filtered.filter(s => s.status === 'STOPPED' || s.status === 'EXPIRED');
+    }
+  }
+
+  // 2. Filter by Search (Symbol)
+  if (searchInput) {
+    filtered = filtered.filter(s => s.symbol.toUpperCase().includes(searchInput));
+  }
+
+  if (filtered.length === 0) {
     emptyEl.style.display = 'flex';
     listEl.innerHTML = '';
     return;
   }
 
   emptyEl.style.display = 'none';
-  listEl.innerHTML = signals.map(s => renderSignalCard(s)).join('');
+  listEl.innerHTML = filtered.map(s => renderSignalCard(s)).join('');
 }
 
 function refreshSignals() {
+  const listEl = document.getElementById('signalsList');
+  listEl.innerHTML = '<div class="loading-placeholder"><i class="fas fa-spinner fa-spin"></i> جاري التحديث...</div>';
   fetchSignals();
 }
 

@@ -157,9 +157,21 @@
         <div class="dashboard-grid">
           <!-- Left Column: Active Signals -->
           <div class="glass-card grid-span-2">
-            <div class="card-header">
+            <div class="card-header flex-column-mobile">
               <h4 class="card-title"><i class="fas fa-bolt text-warning"></i> الإشارات النشطة</h4>
-              <button class="icon-btn" onclick="refreshSignals()"><i class="fas fa-sync-alt"></i></button>
+              <div class="card-actions flex-wrap gap-8">
+                <div class="search-wrapper">
+                  <i class="fas fa-search search-icon"></i>
+                  <input type="text" id="signalsSearch" class="premium-input-small" placeholder="بحث بالعملة..." oninput="renderSignals()">
+                </div>
+                <select id="signalsFilter" class="premium-select-small" onchange="renderSignals()">
+                  <option value="active">نشطة</option>
+                  <option value="completed">مكتملة</option>
+                  <option value="stopped">متوقفة</option>
+                  <option value="all">الكل</option>
+                </select>
+                <button class="icon-btn" onclick="refreshSignals()"><i class="fas fa-sync-alt"></i></button>
+              </div>
             </div>
             <div class="card-content" id="signalsBody">
               <div class="empty-placeholder" id="signalsEmpty">
