@@ -55,6 +55,17 @@ async function checkPrices() {
 
   // New: Auto-heal missing SL orders
   await ensureStopLossOrders(activeSignals);
+  
+  // New: Sync with actual exchange balances (detect manual sells)
+  let walletBalances = null;
+  if (!config.trading.dryRun) {
+    try {
+      const accountInfo = await mexcClient.getAccountInfo();
+      walletBalances = new Map(accountInfo.balances.map(b => [b.asset, parseFloat(b.free) + parseFloat(b.locked)]));
+    } catch (err) {
+      logger.error('Failed to fetch wallet balances for sync', { error: err.message });
+    }
+  }
 
   // Optimization: Fetch all prices in one call to avoid rate limits
   let allPrices = {};
@@ -73,6 +84,31 @@ async function checkPrices() {
     try {
       const currentPrice = allPrices[signal.symbol];
       if (!currentPrice) continue;
+
+      // --- Sync Check: Verify if we still hold the token ---
+      if (walletBalances && !config.trading.dryRun) {
+        const tokenSymbol = signal.symbol.replace('USDT', '');
+        const actualBalance = walletBalances.get(tokenSymbol) || 0;
+        
+        // If balance is practically zero but signal is active, it was sold manually
+        if (actualBalance < 0.000001) {
+           const trades = await db.getTradesBySignalId(signal.id);
+           const totalBought = trades.filter(t => t.side === 'BUY').reduce((s, t) => s + parseFloat(t.quantity), 0);
+           
+           if (totalBought > 0) {
+             logger.warn(`🔍 Auto-Sync: Detected manual sell for ${signal.symbol}. Closing signal.`);
+             await db.updateSignalStatus(signal.id, 'COMPLETED');
+             await db.logActivity('SYNC', `Signal closed: ${signal.symbol} was sold manually on exchange.`);
+             
+             // Cancel SL order if exists
+             if (signal.sl_order_id) {
+               await mexcClient.cancelOrder(signal.symbol, signal.sl_order_id).catch(() => {});
+             }
+             continue; 
+           }
+        }
+      }
+      // --- End Sync Check ---
 
       // Initialize tracking set for this signal if not exists
       if (!loggedTPReached.has(signal.id)) {
