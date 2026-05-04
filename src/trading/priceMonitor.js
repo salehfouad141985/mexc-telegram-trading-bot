@@ -391,10 +391,9 @@ async function manualCloseSignal(signalId) {
   // Get current price
   let currentPrice;
   try {
-    currentPrice = await mexcClient.getTickerPrice(signal.symbol);
+    currentPrice = await mexcClient.getSymbolPrice(signal.symbol);
   } catch (err) {
     logger.error('Failed to get price for manual close', { error: err.message });
-    // If ticker fails, try to get from previous monitor cycle or throw
     throw new Error('Could not fetch current price to close trade');
   }
 
