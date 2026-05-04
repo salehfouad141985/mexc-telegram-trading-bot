@@ -202,6 +202,18 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
+// Close a signal/trade manually
+app.post('/api/signals/:id/close', async (req, res) => {
+  try {
+    const { manualCloseSignal } = require('../trading/priceMonitor');
+    const result = await manualCloseSignal(parseInt(req.params.id));
+    res.json(result);
+  } catch (err) {
+    logger.error(`Failed to close signal ${req.params.id} manually:`, err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Serve dashboard
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

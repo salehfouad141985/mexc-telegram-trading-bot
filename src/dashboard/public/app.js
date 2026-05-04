@@ -22,6 +22,28 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(fetchAll, POLL_INTERVAL);
 });
 
+async function closeSignal(id, symbol) {
+  if (!confirm(`هل أنت متأكد من إغلاق صفقة ${symbol} يدوياً؟ سيتم بيع الكمية المتبقية بسعر السوق.`)) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/signals/${id}/close`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const result = await res.json();
+    if (res.ok) {
+      showToast(`تم إغلاق صفقة ${symbol} بنجاح بسعر $${result.price}`, 'success');
+      fetchAll(); // Refresh dashboard
+    } else {
+      throw new Error(result.error || 'Failed to close trade');
+    }
+  } catch (err) {
+    console.error('Close signal error:', err);
+    showToast(`خطأ في إغلاق الصفقة: ${err.message}`, 'error');
+  }
+}
+
 function initSettingsListeners() {
   const toggle = document.getElementById('inputAutoTrade');
   if (toggle) {
@@ -444,7 +466,14 @@ function renderSignalCard(signal) {
         ${targets.map(t => `<span class="pill">${t}</span>`).join('')}
       </div>
       <div class="signal-meta mt-12 flex-between">
-        <span class="status-pill ${getSignalStatusClass(signal.status)}">${translateStatus(signal.status)}</span>
+        <div class="flex-row gap-8 align-center">
+          <span class="status-pill ${getSignalStatusClass(signal.status)}">${translateStatus(signal.status)}</span>
+          ${(['ACTIVE', 'PARTIALLY_FILLED', 'NEW'].includes(signal.status)) ? `
+            <button class="btn-danger-small" onclick="closeSignal(${signal.id}, '${signal.symbol}')" title="إغلاق الصفقة يدوياً بسعر السوق">
+              <i class="fas fa-times-circle"></i> إغلاق
+            </button>
+          ` : ''}
+        </div>
         <span class="text-muted small">${time}</span>
       </div>
     </div>

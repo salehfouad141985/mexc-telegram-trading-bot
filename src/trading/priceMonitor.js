@@ -335,8 +335,39 @@ async function handleStopLoss(signal, currentPrice) {
     loggedTPReached.delete(signal.id); // Clean up tracking
 
   } catch (err) {
-    logger.error('Failed to handle stop loss', { error: err.message });
+    logger.error('handleStopLoss failed', { error: err.message });
   }
+}
+
+/**
+ * Manually close a signal/trade from dashboard
+ * Market sells remaining qty and cancels existing SL orders
+ */
+async function manualCloseSignal(signalId) {
+  const signal = await db.getSignalById(signalId);
+  if (!signal) throw new Error('Signal not found');
+  if (signal.status === 'STOPPED' || signal.status === 'COMPLETED' || signal.status === 'EXPIRED') {
+    throw new Error('Signal is already closed');
+  }
+
+  logger.info(`🚨 Manual close initiated for: ${signal.symbol}`);
+  
+  // Get current price
+  let currentPrice;
+  try {
+    currentPrice = await mexcClient.getTickerPrice(signal.symbol);
+  } catch (err) {
+    logger.error('Failed to get price for manual close', { error: err.message });
+    // If ticker fails, try to get from previous monitor cycle or throw
+    throw new Error('Could not fetch current price to close trade');
+  }
+
+  // Reuse handleStopLoss logic for closing the position
+  // We use handleStopLoss because it already handles canceling TP orders and market selling
+  await handleStopLoss(signal, currentPrice);
+
+  await db.logActivity('MANUAL_CLOSE', `Trade closed manually: ${signal.symbol} @ $${currentPrice}`);
+  return { success: true, price: currentPrice };
 }
 
 /**
