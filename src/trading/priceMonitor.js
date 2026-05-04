@@ -429,4 +429,5 @@ async function ensureStopLossOrders(activeSignals) {
 module.exports = {
   startMonitoring,
   stopMonitoring,
+  manualCloseSignal,
 };
