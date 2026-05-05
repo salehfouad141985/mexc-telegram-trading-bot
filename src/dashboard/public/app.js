@@ -174,7 +174,7 @@ async function fetchBalance() {
 
 async function fetchSignals() {
   try {
-    const res = await fetch(`${API_BASE}/api/signals?limit=50`); // Increased limit for better filtering
+    const res = await fetch(`${API_BASE}/api/signals?limit=200`); // Increased limit to ensure active signals aren't missed
     cachedSignals = await res.json();
     renderSignals(); // Initial render
   } catch (err) {

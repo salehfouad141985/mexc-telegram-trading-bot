@@ -83,14 +83,25 @@ const signals = {
     return data;
   },
 
-  async getAll(limit = 50) {
+  async getAll(limit = 200) {
+    // Priority for Active/New/PartiallyFilled, then by date
     const { data, error } = await supabase
       .from('bot_signals')
       .select('*')
+      .order('status', { ascending: true }) // 'ACTIVE' starts with A, so it comes early (Postgres specific check needed)
       .order('created_at', { ascending: false })
       .limit(limit);
+      
     if (error) return [];
-    return data;
+    
+    // Sort logic in JS to be safe: Active statuses first
+    const activeOrder = { 'ACTIVE': 1, 'PARTIALLY_FILLED': 1, 'NEW': 1, 'COMPLETED': 2, 'STOPPED': 2, 'EXPIRED': 2 };
+    return data.sort((a, b) => {
+      const orderA = activeOrder[a.status] || 99;
+      const orderB = activeOrder[b.status] || 99;
+      if (orderA !== orderB) return orderA - orderB;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
   },
 
   async getByTelegramMsgId(msgId) {
