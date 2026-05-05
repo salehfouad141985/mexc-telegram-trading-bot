@@ -1020,6 +1020,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   font-size: 0.8rem;
 }
 
+/* Reached Target Styling */
+.pill.pill-reached {
+  background: var(--accent-emerald);
+  color: white;
+  border-color: var(--accent-emerald);
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
 /* Toast Animations Tweak */
 .toast {
   position: fixed;

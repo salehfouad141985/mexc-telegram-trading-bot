@@ -24,7 +24,7 @@ if (DASHBOARD_TOKEN) {
   logger.info('🔒 Dashboard API authentication enabled');
 }
 
-// Helper to get real-time prices for active signals
+// Helper to get real-time prices and reached targets for active signals
 async function enrichWithRealtimeData(signals) {
   if (!signals || signals.length === 0) return 0;
   
@@ -35,8 +35,17 @@ async function enrichWithRealtimeData(signals) {
     let totalFloatingPnl = 0;
     const amount = parseFloat(config.trading.tradeAmountUsdt) || 10;
 
-    signals.forEach(sig => {
+    // Process all signals in parallel for better performance
+    await Promise.all(signals.map(async (sig) => {
       const currentPrice = priceMap.get(sig.symbol);
+      
+      // Get reached targets from trades table
+      const trades = await db.getTradesBySignalId(sig.id);
+      sig.reached_targets = trades
+        .filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'))
+        .map(t => t.target_label)
+        .filter(label => label && label.startsWith('TP'));
+
       if (currentPrice && sig.entry_price) {
         const pnlPercent = ((currentPrice - sig.entry_price) / sig.entry_price) * 100;
         const pnlUsdt = (pnlPercent / 100) * amount;
@@ -49,7 +58,8 @@ async function enrichWithRealtimeData(signals) {
            totalFloatingPnl += pnlUsdt;
         }
       }
-    });
+    }));
+    
     return totalFloatingPnl;
   } catch (err) {
     logger.error('PnL enrichment failed', err);
