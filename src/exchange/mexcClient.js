@@ -283,10 +283,26 @@ class MexcClient {
   async isSymbolAvailable(symbol) {
     try {
       const info = await this.getExchangeInfo(symbol);
-      // MEXC API often uses '1' for enabled, but check for 'ENABLED' as well for safety
-      const isEnabled = info && (info.status === '1' || info.status === 1 || info.status === 'ENABLED');
-      return isEnabled && info.isSpotTradingAllowed !== false;
-    } catch {
+      if (!info) {
+        logger.warn(`🔍 Symbol ${symbol} not found in exchange info.`);
+        return false;
+      }
+      
+      // MEXC API often uses '1' for enabled. 
+      // We'll be more lenient: as long as it exists and isn't explicitly disabled for spot
+      const isSpotAllowed = info.isSpotTradingAllowed !== false;
+      const status = String(info.status);
+      
+      // '1' or 'ENABLED' are the typical active statuses
+      const isActive = status === '1' || status === 'ENABLED' || status === '0'; // 0 is sometimes used for new listings
+      
+      if (!isSpotAllowed || !isActive) {
+        logger.warn(`⚠️ Symbol ${symbol} exists but might be restricted. Status: ${status}, SpotAllowed: ${isSpotAllowed}`);
+      }
+
+      return isSpotAllowed; // Primary requirement is that Spot is allowed
+    } catch (err) {
+      logger.error(`❌ Error checking symbol ${symbol}`, { error: err.message });
       return false;
     }
   }

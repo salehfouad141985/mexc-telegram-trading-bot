@@ -91,12 +91,16 @@ class SignalParser {
    */
   extractSymbol(text) {
     // 1. Try hashtag format: #FOGO
-    const hashtagMatch = text.match(/#([A-Za-z0-9]+)/);
-    if (hashtagMatch) return hashtagMatch[1].toUpperCase();
+    const hashtagMatch = text.match(/#([A-Za-z0-9.]+)/);
+    if (hashtagMatch) {
+      return hashtagMatch[1].replace(/\.+$/, '').toUpperCase();
+    }
 
     // 2. Try pattern: "SYMBOL |" or "SYMBOL -" at the start
-    const startMatch = text.match(/^([A-Za-z0-9]{2,10})\s*[|\-\/]/);
-    if (startMatch) return startMatch[1].toUpperCase();
+    const startMatch = text.match(/^([A-Za-z0-9.]{2,10})\s*[|\-\/]/);
+    if (startMatch) {
+      return startMatch[1].replace(/\.+$/, '').toUpperCase();
+    }
 
     return null;
   }
