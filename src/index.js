@@ -107,11 +107,39 @@ async function main() {
   // Step 6: Start Price Monitor
   await syncBotState();
 
+  /**
+   * Automatically close and sell positions for expired signals
+   */
+  const handleExpiredSignals = async () => {
+    try {
+      const expiredSignals = await db.cleanupStaleSignals();
+      if (!expiredSignals || expiredSignals.length === 0) return;
+
+      for (const signal of expiredSignals) {
+        // Only sell if it was already entered (ACTIVE or PARTIALLY_FILLED)
+        if (signal.status === 'ACTIVE' || signal.status === 'PARTIALLY_FILLED') {
+          logger.info(`🚨 Auto-closing expired trade: ${signal.symbol}`);
+          try {
+            await priceMonitor.manualCloseSignal(signal.id);
+            await db.logActivity('SYSTEM', `Auto-closed expired trade: ${signal.symbol}`);
+          } catch (err) {
+            logger.error(`❌ Failed to auto-close expired trade: ${signal.symbol}`, { error: err.message });
+          }
+        } else if (signal.status === 'NEW') {
+          // If it was NEW, it just never reached entry, so we just log it
+          logger.info(`🕰️ Pending signal expired without entering: ${signal.symbol}`);
+        }
+      }
+    } catch (err) {
+      logger.error('Error handling expired signals', { error: err.message });
+    }
+  };
+
   // Step 7: Schedule periodic maintenance (every 6 hours)
   setInterval(async () => {
     try {
       await db.cleanupOldLogs();
-      await db.cleanupStaleSignals();
+      await handleExpiredSignals();
     } catch (err) {
       logger.error('Maintenance task error', { error: err.message });
     }
@@ -119,7 +147,7 @@ async function main() {
 
   // Run initial cleanup on startup
   await db.cleanupOldLogs();
-  await db.cleanupStaleSignals();
+  await handleExpiredSignals();
 
   // Graceful shutdown
   process.on('SIGINT', shutdown);

@@ -348,11 +348,11 @@ async function cleanupStaleSignals() {
     
     const { data: staleSignals } = await supabase
       .from('bot_signals')
-      .select('id, symbol')
-      .in('status', ['ACTIVE', 'NEW'])
+      .select('*') // Select all fields to help with selling
+      .in('status', ['ACTIVE', 'NEW', 'PARTIALLY_FILLED'])
       .lt('created_at', cutoff.toISOString());
     
-    if (!staleSignals || staleSignals.length === 0) return;
+    if (!staleSignals || staleSignals.length === 0) return [];
     
     for (const sig of staleSignals) {
       await supabase
@@ -360,14 +360,17 @@ async function cleanupStaleSignals() {
         .update({ status: 'EXPIRED', updated_at: new Date() })
         .eq('id', sig.id);
       
-      logger.info(`🕰️ Signal expired: ${sig.symbol} (ID: ${sig.id})`);
+      logger.info(`🕰️ Signal marked as expired in DB: ${sig.symbol} (ID: ${sig.id})`);
     }
     
     if (staleSignals.length > 0) {
       await logActivity('SYSTEM', `Auto-expired ${staleSignals.length} stale signal(s)`);
     }
+
+    return staleSignals; // Return for trading action
   } catch (err) {
     logger.error('Stale signal cleanup error', { error: err.message });
+    return [];
   }
 }
 
