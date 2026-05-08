@@ -1064,7 +1064,19 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   100% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.2); }
 }
 
-/* Toast Animations Tweak */
+.position-value {
+  font-size: 0.7rem;
+  opacity: 0.8;
+  margin-top: 2px;
+  text-align: left;
+  font-family: var(--font-mono);
+}
+
+.pnl-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .toast {
   position: fixed;
   bottom: 30px;

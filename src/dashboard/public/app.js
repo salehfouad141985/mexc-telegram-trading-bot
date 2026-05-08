@@ -443,9 +443,12 @@ function renderSignalCard(signal) {
 
   const floatingPnlHtml = (signal.floating_pnl_percent !== undefined && signal.floating_pnl_percent !== null) ? `
     <div class="signal-floating-pnl ${parseFloat(signal.floating_pnl_percent) >= 0 ? 'text-emerald' : 'text-rose'}">
-      <i class="fas ${parseFloat(signal.floating_pnl_percent) > 0 ? 'fa-caret-up' : parseFloat(signal.floating_pnl_percent) < 0 ? 'fa-caret-down' : 'fa-minus'}"></i>
-      <span>${parseFloat(signal.floating_pnl_percent) >= 0 ? '+' : ''}${signal.floating_pnl_percent}%</span>
-      <span class="small">($${signal.floating_pnl_usdt || '0.00'})</span>
+      <div class="pnl-main">
+        <i class="fas ${parseFloat(signal.floating_pnl_percent) > 0 ? 'fa-caret-up' : parseFloat(signal.floating_pnl_percent) < 0 ? 'fa-caret-down' : 'fa-minus'}"></i>
+        <span>${parseFloat(signal.floating_pnl_percent) >= 0 ? '+' : ''}${signal.floating_pnl_percent}%</span>
+        <span class="small">($${signal.floating_pnl_usdt || '0.00'})</span>
+      </div>
+      <div class="position-value">قيمة العملة: $${signal.current_value_usdt || '0.00'}</div>
     </div>
   ` : '';
 

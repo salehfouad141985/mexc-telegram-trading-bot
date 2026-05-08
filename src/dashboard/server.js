@@ -53,6 +53,7 @@ async function enrichWithRealtimeData(signals) {
         sig.current_price = currentPrice;
         sig.floating_pnl_percent = pnlPercent.toFixed(2);
         sig.floating_pnl_usdt = pnlUsdt.toFixed(2);
+        sig.current_value_usdt = (amount + pnlUsdt).toFixed(2);
         
         if (sig.status === 'ACTIVE' || sig.status === 'PARTIALLY_FILLED' || sig.status === 'NEW') {
            totalFloatingPnl += pnlUsdt;
