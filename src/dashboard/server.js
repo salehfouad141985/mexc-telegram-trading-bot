@@ -48,12 +48,27 @@ async function enrichWithRealtimeData(signals) {
 
       if (currentPrice && sig.entry_price) {
         const pnlPercent = ((currentPrice - sig.entry_price) / sig.entry_price) * 100;
-        const pnlUsdt = (pnlPercent / 100) * amount;
         
+        // Calculate remaining quantity: Sum(BUYS) - Sum(SELLS)
+        const totalBought = trades
+          .filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'SIMULATED'))
+          .reduce((sum, t) => sum + parseFloat(t.quantity || 0), 0);
+          
+        const totalSold = trades
+          .filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'))
+          .reduce((sum, t) => sum + parseFloat(t.quantity || 0), 0);
+          
+        const remainingQty = Math.max(0, totalBought - totalSold);
+        const currentValueUsdt = remainingQty * currentPrice;
+        
+        // P&L USDT should be based on initial investment for context
+        const pnlUsdt = (pnlPercent / 100) * amount;
+
         sig.current_price = currentPrice;
         sig.floating_pnl_percent = pnlPercent.toFixed(2);
         sig.floating_pnl_usdt = pnlUsdt.toFixed(2);
-        sig.current_value_usdt = (amount + pnlUsdt).toFixed(2);
+        sig.current_value_usdt = currentValueUsdt.toFixed(2);
+        sig.remaining_qty = remainingQty.toFixed(remainingQty < 1 ? 6 : 2);
         
         if (sig.status === 'ACTIVE' || sig.status === 'PARTIALLY_FILLED' || sig.status === 'NEW') {
            totalFloatingPnl += pnlUsdt;
