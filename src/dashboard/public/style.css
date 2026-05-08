@@ -435,7 +435,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 500px; /* Same height as the trades table */
+  overflow-y: auto;
+  padding-left: 8px; /* Extra padding for scrollbar visibility */
 }
+
+/* Custom scrollbar for the signals container */
+.signals-container::-webkit-scrollbar { width: 4px; }
+.signals-container::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 10px; }
 
 .signal-card {
   background: rgba(255, 255, 255, 0.02);
