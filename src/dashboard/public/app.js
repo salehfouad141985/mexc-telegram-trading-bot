@@ -422,11 +422,20 @@ function renderSignalCard(signal) {
   const scoreClass = signal.score >= 8 ? 'score-high' : signal.score >= 6 ? 'score-mid' : 'score-low';
   
   const reached = signal.reached_targets || [];
+  const currentPrice = parseFloat(signal.current_price || 0);
   const targets = [];
-  if (signal.tp1) targets.push({ label: 'TP1', text: `TP1: $${signal.tp1}` });
-  if (signal.tp2) targets.push({ label: 'TP2', text: `TP2: $${signal.tp2}` });
-  if (signal.tp3) targets.push({ label: 'TP3', text: `TP3: $${signal.tp3}` });
-  if (signal.tp4) targets.push({ label: 'TP4', text: `TP4: $${signal.tp4}` });
+  
+  const checkNear = (targetPrice) => {
+    if (!targetPrice || !currentPrice) return false;
+    const diff = Math.abs(targetPrice - currentPrice);
+    const percentNear = (diff / currentPrice) * 100;
+    return percentNear <= 0.5; // Within 0.5%
+  };
+
+  if (signal.tp1) targets.push({ label: 'TP1', text: `TP1: $${signal.tp1}`, price: signal.tp1 });
+  if (signal.tp2) targets.push({ label: 'TP2', text: `TP2: $${signal.tp2}`, price: signal.tp2 });
+  if (signal.tp3) targets.push({ label: 'TP3', text: `TP3: $${signal.tp3}`, price: signal.tp3 });
+  if (signal.tp4) targets.push({ label: 'TP4', text: `TP4: $${signal.tp4}`, price: signal.tp4 });
 
   const time = new Date(signal.created_at).toLocaleString('en-GB', {
     hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric'
@@ -464,7 +473,12 @@ function renderSignalCard(signal) {
         </div>
       </div>
       <div class="target-pills">
-        ${targets.map(t => `<span class="pill ${reached.includes(t.label) ? 'pill-reached' : ''}">${t.text}</span>`).join('')}
+        ${targets.map(t => {
+          const isReached = reached.includes(t.label);
+          const isNear = !isReached && checkNear(t.price);
+          const statusClass = isReached ? 'pill-reached' : isNear ? 'pill-near' : '';
+          return `<span class="pill ${statusClass}">${t.text}</span>`;
+        }).join('')}
       </div>
       <div class="signal-meta mt-12 flex-between">
         <div class="flex-row gap-8 align-center">

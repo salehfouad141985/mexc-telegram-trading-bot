@@ -1049,6 +1049,21 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
 }
 
+.pill.pill-near {
+  background: var(--accent-gold);
+  color: black;
+  border-color: var(--accent-gold);
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+  animation: pulse-orange 2s infinite;
+}
+
+@keyframes pulse-orange {
+  0% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.2); }
+  50% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.5); }
+  100% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.2); }
+}
+
 /* Toast Animations Tweak */
 .toast {
   position: fixed;
