@@ -200,7 +200,9 @@ function renderSignals() {
     } else if (statusFilter === 'completed') {
       filtered = filtered.filter(s => s.status === 'COMPLETED');
     } else if (statusFilter === 'stopped') {
-      filtered = filtered.filter(s => s.status === 'STOPPED' || s.status === 'EXPIRED');
+      filtered = filtered.filter(s => s.status === 'STOPPED');
+    } else if (statusFilter === 'expired') {
+      filtered = filtered.filter(s => s.status === 'EXPIRED');
     }
   }
 
@@ -569,12 +571,12 @@ function drawSparkline(canvasId, data) {
 }
 
 function getSignalStatusClass(status) {
-  const map = { ACTIVE: 'status-filled', NEW: 'status-pending', STOPPED: 'status-canceled', ERROR: 'status-canceled' };
+  const map = { ACTIVE: 'status-filled', NEW: 'status-pending', STOPPED: 'status-canceled', ERROR: 'status-canceled', EXPIRED: 'status-pending' };
   return map[status] || 'status-pending';
 }
 
 function translateStatus(status) {
-  const map = { NEW: 'جديد', ACTIVE: 'نشط', STOPPED: 'متوقف', ERROR: 'خطأ', SKIPPED: 'تم التجاوز' };
+  const map = { NEW: 'جديد', ACTIVE: 'نشط', STOPPED: 'متوقف', ERROR: 'خطأ', SKIPPED: 'تم التجاوز', EXPIRED: 'منتهية' };
   return map[status] || status;
 }
 
