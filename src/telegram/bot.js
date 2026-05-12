@@ -51,6 +51,14 @@ async function cleanupClient() {
 function saveSessionToEnv(sessionString) {
   try {
     const envPath = path.join(__dirname, '../../.env');
+    
+    // Check if file exists first
+    if (!fs.existsSync(envPath)) {
+      logger.warn('⚠️ .env file not found. Printing session string for manual backup:');
+      logger.info(`🔑 SESSION_STRING: ${sessionString}`);
+      return;
+    }
+
     let envContent = fs.readFileSync(envPath, 'utf8');
     
     if (envContent.includes('TELEGRAM_STRING_SESSION=')) {
@@ -63,6 +71,7 @@ function saveSessionToEnv(sessionString) {
     logger.info('✅ Telegram session saved to .env file automatically.');
   } catch (err) {
     logger.error('Failed to save session to .env', { error: err.message });
+    logger.info(`🔑 Manual session string backup: ${sessionString}`);
   }
 }
 
@@ -113,8 +122,11 @@ async function pollForMessages() {
         db.logActivity('SIGNAL', `New signal detected: ${parsedSignal.symbol}`);
         
         if (onSignalCallback) onSignalCallback(parsedSignal);
+      } else if (signalParser.isStatusUpdate(text)) {
+        logger.info(`📝 Channel Update detected: ${text.substring(0, 50).replace(/\n/g, ' ')}...`);
+        db.logActivity('UPDATE', `Channel update: ${text.substring(0, 100).replace(/\n/g, ' ')}`);
       } else {
-        logger.info(`ℹ️ Message is not a trading signal, skipping.`);
+        logger.info(`ℹ️ Message is not a trading signal or update, skipping.`);
       }
     }
   } catch (err) {

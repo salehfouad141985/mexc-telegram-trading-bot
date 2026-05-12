@@ -112,24 +112,29 @@ async function checkPrices() {
 
       // Initialize tracking set for this signal if not exists
       if (!loggedTPReached.has(signal.id)) {
-        loggedTPReached.set(signal.id, new Set());
+        // Recovery: Initialize from database trades to know which TPs were already hit
+        const trades = await db.getTradesBySignalId(signal.id);
+        const hitTPLabels = trades
+          .filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'))
+          .map(t => t.target_label)
+          .filter(l => l && l.startsWith('TP'));
+        
+        loggedTPReached.set(signal.id, new Set(hitTPLabels));
       }
       const logged = loggedTPReached.get(signal.id);
 
       // Calculate Trailing Stop Loss
       let dynamicSL = signal.stop_loss;
       
-      // Get DB trades to check for filled TPs robustly
+      // Get DB trades to check for filled TPs robustly (for Trailing SL logic)
       const trades = await db.getTradesBySignalId(signal.id);
-      const filledTPLabels = trades
-        .filter(t => t.side === 'SELL' && t.status === 'FILLED' && t.target_label && t.target_label.startsWith('TP'))
-        .map(t => t.target_label);
+      const filledTPLabels = Array.from(logged); // Use our synced set
 
-      // Evaluate the highest TP reached
-      const hasTP4 = logged.has('TP4') || filledTPLabels.includes('TP4');
-      const hasTP3 = logged.has('TP3') || filledTPLabels.includes('TP3');
-      const hasTP2 = logged.has('TP2') || filledTPLabels.includes('TP2');
-      const hasTP1 = logged.has('TP1') || filledTPLabels.includes('TP1');
+      // Evaluate the highest TP reached for trailing SL
+      const hasTP4 = filledTPLabels.includes('TP4');
+      const hasTP3 = filledTPLabels.includes('TP3');
+      const hasTP2 = filledTPLabels.includes('TP2');
+      const hasTP1 = filledTPLabels.includes('TP1');
 
       if (hasTP4 && signal.tp3) {
         dynamicSL = signal.tp3;
@@ -158,11 +163,9 @@ async function checkPrices() {
 
       for (const tp of targets) {
         if (tp.price && currentPrice >= tp.price && !logged.has(tp.label)) {
-          logged.add(tp.label);
-          logger.info(`🎯 ${tp.label} reached: ${signal.symbol} @ $${currentPrice} (Target: $${tp.price})`);
-          await db.logActivity('TP_REACHED', `${tp.label} reached: ${signal.symbol} @ $${currentPrice}`);
-          
-          // Execute the Take Profit sell and update the exchange SL
+          // NOTE: We no longer add to 'logged' here. 
+          // handleTakeProfit will add it only after SUCCESSFUL execution or if already in DB.
+          logger.info(`🎯 Target detected: ${tp.label} for ${signal.symbol} @ $${currentPrice} (Target: $${tp.price})`);
           await handleTakeProfit(signal, tp, currentPrice, dynamicSL);
         }
       }
@@ -191,26 +194,53 @@ async function checkPrices() {
 async function handleTakeProfit(signal, target, currentPrice, newSL) {
   try {
     const trades = await db.getTradesBySignalId(signal.id);
+    
+    // Double-check: Did we already fulfill this TP target?
+    const alreadyDone = trades.some(t => t.side === 'SELL' && t.target_label === target.label && (t.status === 'FILLED' || t.status === 'SIMULATED'));
+    if (alreadyDone) {
+      if (loggedTPReached.has(signal.id)) {
+        loggedTPReached.get(signal.id).add(target.label);
+      }
+      return;
+    }
+
     const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING' || t.status === 'SIMULATED'));
     const sellTrades = trades.filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'));
     
     if (buyTrades.length === 0) return;
 
-    const totalBought = buyTrades.reduce((sum, t) => sum + parseFloat(t.quantity), 0);
-    const totalSold = sellTrades.reduce((sum, t) => sum + parseFloat(t.quantity), 0);
-    const currentRemaining = totalBought - totalSold;
+    // USE EXECUTED QUANTITIES to account for fees and partial fills
+    const totalBought = buyTrades.reduce((sum, t) => sum + parseFloat(t.executed_qty || t.quantity || 0), 0);
+    const totalSold = sellTrades.reduce((sum, t) => sum + parseFloat(t.executed_qty || t.quantity || 0), 0);
+    const currentRemaining = Math.floor((totalBought - totalSold) * 100) / 100;
 
-    if (currentRemaining <= 0) return;
+    if (currentRemaining <= 0) {
+       logger.warn(`⚠️ TP trigger but remaining qty is zero for ${signal.symbol}`);
+       return;
+    }
 
-    // Calculate qty for this TP
-    const tpPct = target.pct || 25; // fallback
+    // Calculate qty for this TP based on total bought
+    const tpPct = target.pct || 25; 
     let sellQty = Math.floor((totalBought * tpPct / 100) * 100) / 100;
     
-    // Don't sell more than we have
+    // Don't sell more than we actually have left
     sellQty = Math.min(sellQty, currentRemaining);
     if (sellQty <= 0) return;
 
     logger.info(`📈 Executing ${target.label} Market Sell: ${signal.symbol} | Qty: ${sellQty}`);
+
+    // Step 1: Cancel existing SL order if it exists (CRITICAL: Prevents balance locked error)
+    if (!config.trading.dryRun && signal.sl_order_id) {
+      try {
+        logger.info(`❎ Cancelling exchange SL (${signal.sl_order_id}) to unlock balance for TP...`);
+        await mexcClient.cancelOrder(signal.symbol, signal.sl_order_id);
+        // Important: Clear the ID in the signal object so we don't try to cancel it again if sell fails
+        signal.sl_order_id = null; 
+      } catch (cancelErr) {
+        // If cancellation fails, it might be because it was already hit or doesn't exist
+        logger.warn(`⚠️ Failed to cancel SL for TP: ${cancelErr.message}. Attempting sell anyway...`);
+      }
+    }
 
     let sellResult;
     if (!config.trading.dryRun) {
@@ -251,6 +281,11 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
  
     await db.logActivity('TP_EXECUTED', `${target.label} executed: ${signal.symbol} P&L: $${pnl.toFixed(4)}`);
 
+    // Mark as logged ONLY AFTER successful execution
+    if (loggedTPReached.has(signal.id)) {
+      loggedTPReached.get(signal.id).add(target.label);
+    }
+
     // Update the SL order on the exchange for the remaining quantity
     const nextRemaining = Math.floor((currentRemaining - sellQty) * 100) / 100;
     
@@ -269,6 +304,7 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
 
   } catch (err) {
     logger.error(`❌ TP Execution failed: ${target.label}`, { error: err.message });
+    await db.logActivity('ERROR', `TP Execution failed for ${signal.symbol} (${target.label}): ${err.message}`);
   }
 }
 
@@ -409,18 +445,30 @@ async function manualCloseSignal(signalId) {
  * Ensure each active signal has an active Stop Loss order on the exchange
  */
 async function ensureStopLossOrders(activeSignals) {
-  // On MEXC Spot V3, native Stop Loss orders (STOP_LOSS, STOP_LOSS_LIMIT) 
-  // often return 'invalid type' depending on account/symbol.
-  // We rely on our Virtual Stop Loss (VSL) which is already handled in checkPrices().
-  // This function now just verifies that the signals are being monitored.
+  if (config.trading.dryRun) return;
 
   for (const signal of activeSignals) {
     try {
-      // Since native SL is problematic on MEXC Spot, we use Virtual SL exclusively.
-      // This has the advantage of NOT locking funds and supporting Trailing SL.
-      // logger.debug(`🛡️ Virtual SL Protection active for ${signal.symbol}`);
+      // If signal is ACTIVE but has no SL order ID, we need to place one
+      // This happens after bot restart if the SL wasn't persisted or was lost
+      if (!signal.sl_order_id) {
+        const trades = await db.getTradesBySignalId(signal.id);
+        const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING'));
+        const sellTrades = trades.filter(t => t.side === 'SELL' && (t.status === 'FILLED'));
+        
+        const totalBought = buyTrades.reduce((sum, t) => sum + parseFloat(t.executed_qty || t.quantity || 0), 0);
+        const totalSold = sellTrades.reduce((sum, t) => sum + parseFloat(t.executed_qty || t.quantity || 0), 0);
+        const remainingQty = Math.floor((totalBought - totalSold) * 100) / 100;
+
+        if (remainingQty > 0) {
+          logger.info(`🛡️ Auto-Healing: Placing missing Stop Loss for ${signal.symbol} (Qty: ${remainingQty})`);
+          // We use the current dynamic SL if possible, otherwise the original stop_loss
+          const currentSL = signal.stop_loss; 
+          await tradeManager.placeStopLossOrder(signal, remainingQty, currentSL, false);
+        }
+      }
     } catch (err) {
-      logger.error(`❌ Monitoring check failed for ${signal.symbol}`, { error: err.message });
+      logger.error(`❌ Stop Loss recovery check failed for ${signal.symbol}`, { error: err.message });
     }
   }
 }

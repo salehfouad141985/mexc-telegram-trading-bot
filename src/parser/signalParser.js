@@ -78,12 +78,19 @@ class SignalParser {
    * Check if message text appears to be a trading signal
    */
   isSignal(text) {
-    // Must contain at least a hashtag symbol and entry price
-    const hasSymbol = /#[A-Za-z0-9]+/.test(text);
-    const hasEntry = /entry|Entry|ENTRY/i.test(text) && /\$[\d.]+/.test(text);
+    // 1. Check for symbol: #HASHTAG or uppercase word at start or with /USDT
+    const hasSymbol = /#[A-Za-z0-9]+/.test(text) || 
+                      /^([A-Z0-9]{2,10})\s*[|\-\/]/.test(text) || 
+                      /[A-Z0-9]{2,10}\/(USDT|USDC|BTC)/i.test(text);
+    
+    // 2. Check for entry keyword and price
+    const hasEntry = /entry|Entry|ENTRY/i.test(text) && 
+                     (/\$[\d.]+/.test(text) || /entry[:\s]*[\d.]+/i.test(text));
+    
+    // 3. Check for targets
     const hasTargets = /TP\d|target/i.test(text);
 
-    return hasSymbol && hasEntry && hasTargets;
+    return (hasSymbol && hasEntry) || (hasSymbol && hasTargets);
   }
 
   /**
@@ -96,8 +103,14 @@ class SignalParser {
       return hashtagMatch[1].replace(/\.+$/, '').toUpperCase();
     }
 
-    // 2. Try pattern: "SYMBOL |" or "SYMBOL -" at the start
-    const startMatch = text.match(/^([A-Za-z0-9.]{2,10})\s*[|\-\/]/);
+    // 2. Try pair format: FOGO/USDT or FOGO-USDT
+    const pairMatch = text.match(/([A-Z0-9]{2,10})[\/\-](USDT|USDC|BTC|ETH)/i);
+    if (pairMatch) {
+      return pairMatch[1].toUpperCase();
+    }
+
+    // 3. Try pattern: "SYMBOL |" or "SYMBOL -" at the start
+    const startMatch = text.match(/^([A-Z0-9.]{2,10})\s*[|\-\/]/i);
     if (startMatch) {
       return startMatch[1].replace(/\.+$/, '').toUpperCase();
     }
@@ -210,8 +223,11 @@ class SignalParser {
    * Check if a message is a status update for an existing signal
    */
   isStatusUpdate(text) {
-    const hasSymbol = /#[A-Za-z0-9]+/.test(text);
-    const hasStatusChange = /(?:status|update)[:\s]*(?:🟢|🔴|🟡)?\s*(closed|hit|cancelled|partial)/i.test(text);
+    const hasSymbol = /#[A-Za-z0-9]+/.test(text) || 
+                      /^([A-Z0-9]{2,10})\s*[|\-\/]/.test(text) ||
+                      /[A-Z0-9]{2,10}\/(USDT|USDC|BTC)/i.test(text);
+                      
+    const hasStatusChange = /(?:status|update)[:\s]*(?:🟢|🔴|🟡)?\s*(closed|hit|cancelled|partial|open)/i.test(text);
     const hasTPHit = /TP\d\s*(?:hit|✅|reached|done)/i.test(text);
     const hasSLHit = /(?:SL|stop\s*loss)\s*(?:hit|✅|reached|triggered)/i.test(text);
 
