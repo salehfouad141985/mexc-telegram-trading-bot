@@ -246,6 +246,23 @@ class SignalParser {
     }
     return hits;
   }
+
+  /**
+   * Check if a message is a "Close All" command
+   */
+  isCloseAll(text) {
+    if (!text || typeof text !== 'string') return false;
+    
+    const hasAllPositions = /all\s*positions/i.test(text);
+    const hasBeenClosed = /been\s*closed/i.test(text);
+    const hasNoActive = /no\s*active\s*positions/i.test(text);
+    
+    // Arabic patterns
+    const hasArabicClose = /إغلاق\s*جميع\s*الصفقات/i.test(text);
+    const hasArabicNoActive = /لا\s*توجد\s*صفقات\s*مفتوحة/i.test(text);
+
+    return (hasAllPositions && hasBeenClosed) || hasNoActive || hasArabicClose || hasArabicNoActive;
+  }
 }
 
 module.exports = new SignalParser();

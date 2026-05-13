@@ -473,8 +473,34 @@ async function ensureStopLossOrders(activeSignals) {
   }
 }
 
+/**
+ * Close all active positions (emergency or channel command)
+ */
+async function closeAllPositions() {
+  const activeSignals = await db.getActiveSignals();
+  if (activeSignals.length === 0) {
+    logger.info('ℹ️ No active positions to close.');
+    return;
+  }
+
+  logger.warn(`🚨 EMERGENCY: Closing all ${activeSignals.length} active positions...`);
+  
+  for (const signal of activeSignals) {
+    try {
+      await manualCloseSignal(signal.id);
+      logger.info(`✅ Successfully closed: ${signal.symbol}`);
+    } catch (err) {
+      logger.error(`❌ Failed to close ${signal.symbol} during Close All`, { error: err.message });
+    }
+  }
+  
+  await db.logActivity('SYSTEM', `Emergency Close All completed for ${activeSignals.length} signals.`);
+  notifier.sendNotification(`🚨 EMERGENCY: All ${activeSignals.length} positions have been closed.`);
+}
+
 module.exports = {
   startMonitoring,
   stopMonitoring,
   manualCloseSignal,
+  closeAllPositions,
 };

@@ -122,6 +122,13 @@ async function pollForMessages() {
         db.logActivity('SIGNAL', `New signal detected: ${parsedSignal.symbol}`);
         
         if (onSignalCallback) onSignalCallback(parsedSignal);
+      } else if (signalParser.isCloseAll(text)) {
+        logger.warn(`🚨 "CLOSE ALL" detected in channel! Closing all active positions...`);
+        db.logActivity('SYSTEM', `Close All triggered by channel message: ${text.substring(0, 50)}`);
+        
+        // Dynamic import to avoid circular dependency if any
+        const priceMonitor = require('../trading/priceMonitor');
+        await priceMonitor.closeAllPositions();
       } else if (signalParser.isStatusUpdate(text)) {
         logger.info(`📝 Channel Update detected: ${text.substring(0, 50).replace(/\n/g, ' ')}...`);
         db.logActivity('UPDATE', `Channel update: ${text.substring(0, 100).replace(/\n/g, ' ')}`);
