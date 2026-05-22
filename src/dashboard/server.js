@@ -176,10 +176,15 @@ app.get('/api/activity', async (req, res) => {
 app.get('/api/balance', async (req, res) => {
   try {
     if (config.trading.dryRun) {
-      return res.json({ free: '1000.00', locked: '0.00', isDryRun: true });
+      return res.json({ free: '1000.00', locked: '0.00', estimated: '1000.00', isDryRun: true });
     }
-    const balance = await mexc.getUsdtBalance();
-    res.json({ ...balance, isDryRun: false });
+    const estBalance = await mexc.getEstimatedBalance();
+    res.json({
+      free: estBalance.freeUsdt.toFixed(2),
+      locked: estBalance.lockedUsdt.toFixed(2),
+      estimated: estBalance.estimated.toFixed(2),
+      isDryRun: false
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

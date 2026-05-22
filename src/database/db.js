@@ -339,7 +339,7 @@ async function cleanupOldLogs() {
 }
 
 /**
- * Cleanup stale ACTIVE signals (older than 7 days with no recent trades)
+ * Fetch stale ACTIVE, PARTIALLY_FILLED, or NEW signals (older than 7 days)
  */
 async function cleanupStaleSignals() {
   try {
@@ -348,28 +348,13 @@ async function cleanupStaleSignals() {
     
     const { data: staleSignals } = await supabase
       .from('bot_signals')
-      .select('*') // Select all fields to help with selling
+      .select('*')
       .in('status', ['ACTIVE', 'NEW', 'PARTIALLY_FILLED'])
       .lt('created_at', cutoff.toISOString());
     
-    if (!staleSignals || staleSignals.length === 0) return [];
-    
-    for (const sig of staleSignals) {
-      await supabase
-        .from('bot_signals')
-        .update({ status: 'EXPIRED', updated_at: new Date() })
-        .eq('id', sig.id);
-      
-      logger.info(`🕰️ Signal marked as expired in DB: ${sig.symbol} (ID: ${sig.id})`);
-    }
-    
-    if (staleSignals.length > 0) {
-      await logActivity('SYSTEM', `Auto-expired ${staleSignals.length} stale signal(s)`);
-    }
-
-    return staleSignals; // Return for trading action
+    return staleSignals || [];
   } catch (err) {
-    logger.error('Stale signal cleanup error', { error: err.message });
+    logger.error('Stale signal fetch error', { error: err.message });
     return [];
   }
 }

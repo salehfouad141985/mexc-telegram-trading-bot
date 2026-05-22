@@ -120,18 +120,78 @@ async function main() {
         if (signal.status === 'ACTIVE' || signal.status === 'PARTIALLY_FILLED') {
           logger.info(`🚨 Auto-closing expired trade: ${signal.symbol}`);
           try {
+            // Step 1: Close the signal on the exchange
             await priceMonitor.manualCloseSignal(signal.id);
-            await db.logActivity('SYSTEM', `Auto-closed expired trade: ${signal.symbol}`);
+            // Step 2: Update database status to EXPIRED (manualCloseSignal -> handleStopLoss sets it to STOPPED)
+            await db.updateSignalStatus(signal.id, 'EXPIRED');
+            
+            await db.logActivity('SYSTEM', `Auto-closed expired trade: ${signal.symbol} and set status to EXPIRED`);
           } catch (err) {
             logger.error(`❌ Failed to auto-close expired trade: ${signal.symbol}`, { error: err.message });
           }
         } else if (signal.status === 'NEW') {
-          // If it was NEW, it just never reached entry, so we just log it
+          // If it was NEW, it just never reached entry, so we just set it to EXPIRED
           logger.info(`🕰️ Pending signal expired without entering: ${signal.symbol}`);
+          await db.updateSignalStatus(signal.id, 'EXPIRED');
+          await db.logActivity('SYSTEM', `Pending signal expired without entering: ${signal.symbol}`);
         }
       }
     } catch (err) {
       logger.error('Error handling expired signals', { error: err.message });
+    }
+  };
+
+  /**
+   * Scan for any already EXPIRED signals on startup that have remaining open positions,
+   * and force close them on the exchange.
+   */
+  const recoverStuckExpiredSignals = async () => {
+    try {
+      logger.info('🔍 Running startup recovery check for stuck EXPIRED signals...');
+      
+      const { data: expiredSignals, error } = await db.supabase
+        .from('bot_signals')
+        .select('*')
+        .eq('status', 'EXPIRED');
+
+      if (error) {
+        logger.error('❌ Failed to fetch EXPIRED signals for recovery check', error);
+        return;
+      }
+
+      if (!expiredSignals || expiredSignals.length === 0) {
+        logger.info('✅ No EXPIRED signals found to recover.');
+        return;
+      }
+
+      logger.info(`🔍 Found ${expiredSignals.length} EXPIRED signals. Checking for remaining quantities...`);
+
+      for (const signal of expiredSignals) {
+        const trades = await db.getTradesBySignalId(signal.id);
+        const buyTrades = trades.filter(t => t.side === 'BUY' && (t.status === 'FILLED' || t.status === 'PENDING' || t.status === 'SIMULATED'));
+        const sellTrades = trades.filter(t => t.side === 'SELL' && (t.status === 'FILLED' || t.status === 'SIMULATED'));
+        
+        const totalBought = buyTrades.reduce((sum, t) => sum + parseFloat(t.quantity || 0), 0);
+        const totalSold = sellTrades.reduce((sum, t) => sum + parseFloat(t.quantity || 0), 0);
+        const remainingQty = Math.floor((totalBought - totalSold) * 100) / 100;
+
+        if (remainingQty > 0.0001) {
+          logger.warn(`⚠️ Stuck position detected for expired signal ${signal.symbol} (ID: ${signal.id}) | Qty: ${remainingQty}`);
+          try {
+            // Force manual close to place market sell order
+            await priceMonitor.manualCloseSignal(signal.id, true);
+            // Ensure status remains EXPIRED in the database
+            await db.updateSignalStatus(signal.id, 'EXPIRED');
+            logger.info(`✅ Successfully closed stuck position for: ${signal.symbol}`);
+            await db.logActivity('RECOVERY', `Closed stuck position for expired signal: ${signal.symbol} | Qty: ${remainingQty}`);
+          } catch (closeErr) {
+            logger.error(`❌ Failed to close stuck position for: ${signal.symbol}`, { error: closeErr.message });
+          }
+        }
+      }
+      logger.info('✅ Startup recovery check completed.');
+    } catch (err) {
+      logger.error('Error in recoverStuckExpiredSignals', { error: err.message });
     }
   };
 
@@ -140,14 +200,16 @@ async function main() {
     try {
       await db.cleanupOldLogs();
       await handleExpiredSignals();
+      await recoverStuckExpiredSignals();
     } catch (err) {
       logger.error('Maintenance task error', { error: err.message });
     }
   }, 6 * 60 * 60 * 1000); // 6 hours
 
-  // Run initial cleanup on startup
+  // Run initial cleanup and recovery on startup
   await db.cleanupOldLogs();
   await handleExpiredSignals();
+  await recoverStuckExpiredSignals();
 
   // Graceful shutdown
   process.on('SIGINT', shutdown);

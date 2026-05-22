@@ -165,9 +165,13 @@ async function fetchBalance() {
   try {
     const res = await fetch(`${API_BASE}/api/balance`);
     const data = await res.json();
-    const balVal = parseFloat(data.free || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    document.getElementById('balanceValue').textContent = balVal;
+    const estimatedVal = parseFloat(data.estimated || data.free || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const availableVal = parseFloat(data.free || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    
+    document.getElementById('estimatedBalanceValue').textContent = estimatedVal;
+    document.getElementById('balanceValue').textContent = availableVal;
   } catch {
+    document.getElementById('estimatedBalanceValue').textContent = '—';
     document.getElementById('balanceValue').textContent = '—';
   }
 }

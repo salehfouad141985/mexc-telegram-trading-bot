@@ -301,6 +301,18 @@ body {
   margin-right: 4px;
 }
 
+.balance-sub {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.balance-sub .currency-small {
+  font-size: 0.65rem;
+  margin-right: 2px;
+}
+
 /* ===== Dashboard Content ===== */
 .content-container {
   padding: 32px 40px;

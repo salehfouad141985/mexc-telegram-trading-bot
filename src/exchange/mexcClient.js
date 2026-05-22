@@ -189,6 +189,49 @@ class MexcClient {
   }
 
   /**
+   * Get total estimated balance in USDT (USDT + value of all other assets)
+   */
+  async getEstimatedBalance() {
+    try {
+      const account = await this.getAccountInfo();
+      const prices = await this.getAllPrices();
+      const priceMap = new Map(prices.map((p) => [p.symbol, parseFloat(p.price)]));
+      
+      let totalEst = 0;
+      let totalFreeUsdt = 0;
+      let totalLockedUsdt = 0;
+
+      for (const bal of account.balances) {
+        const free = parseFloat(bal.free) || 0;
+        const locked = parseFloat(bal.locked) || 0;
+        const qty = free + locked;
+        if (qty <= 0) continue;
+
+        if (bal.asset === 'USDT') {
+          totalEst += qty;
+          totalFreeUsdt += free;
+          totalLockedUsdt += locked;
+        } else {
+          const symbol = `${bal.asset}USDT`;
+          const price = priceMap.get(symbol);
+          if (price) {
+            totalEst += qty * price;
+          }
+        }
+      }
+
+      return {
+        estimated: totalEst,
+        freeUsdt: totalFreeUsdt,
+        lockedUsdt: totalLockedUsdt
+      };
+    } catch (err) {
+      logger.error('Failed to get estimated balance', { error: err.message });
+      throw err;
+    }
+  }
+
+  /**
    * Place a new order
    * @param {object} params - { symbol, side, type, quantity, price?, stopPrice? }
    */

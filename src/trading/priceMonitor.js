@@ -415,14 +415,14 @@ async function handleStopLoss(signal, currentPrice) {
  * Manually close a signal/trade from dashboard
  * Market sells remaining qty and cancels existing SL orders
  */
-async function manualCloseSignal(signalId) {
+async function manualCloseSignal(signalId, force = false) {
   const signal = await db.getSignalById(signalId);
   if (!signal) throw new Error('Signal not found');
-  if (signal.status === 'STOPPED' || signal.status === 'COMPLETED' || signal.status === 'EXPIRED') {
+  if (!force && (signal.status === 'STOPPED' || signal.status === 'COMPLETED' || signal.status === 'EXPIRED')) {
     throw new Error('Signal is already closed');
   }
 
-  logger.info(`🚨 Manual close initiated for: ${signal.symbol}`);
+  logger.info(`🚨 Manual close initiated for: ${signal.symbol} (Force: ${force})`);
   
   // Get current price
   let currentPrice;
