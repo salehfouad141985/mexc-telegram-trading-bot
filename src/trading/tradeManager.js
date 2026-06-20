@@ -119,13 +119,14 @@ class TradeManager {
         if (!currentPrice) currentPrice = signal.entry;
       }
       
-      const maxAllowedPrice = signal.entry * 1.005; // 0.5% above entry
+      const tolerance = config.trading.priceTolerancePercent || 1.5;
+      const maxAllowedPrice = signal.entry * (1 + (tolerance / 100));
       
       if (currentPrice > maxAllowedPrice) {
-        const msg = `⚠️ Current price ($${currentPrice}) is > 0.5% above entry ($${signal.entry}). Skipping ${signal.symbol}.`;
+        const msg = `⚠️ Current price ($${currentPrice}) is > ${tolerance}% above entry ($${signal.entry}). Skipping ${signal.symbol}.`;
         logger.warn(msg);
         notifier.sendNotification(msg);
-        await db.logActivity('SKIP', `Price too high: ${signal.symbol} @ $${currentPrice} (max: $${maxAllowedPrice.toFixed(4)})`);
+        await db.logActivity('SKIP', `Price too high: ${signal.symbol} @ $${currentPrice} (max: $${maxAllowedPrice.toFixed(4)}, tolerance: ${tolerance}%)`);
         await db.updateSignalStatus(signal.id, 'SKIPPED_HIGH_PRICE');
         return;
       }

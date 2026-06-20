@@ -1,4 +1,5 @@
 const logger = require('../utils/logger');
+const config = require('../config');
 
 /**
  * Signal Parser for Shaabane Signals format
@@ -124,12 +125,21 @@ class SignalParser {
   normalizeSymbol(symbol) {
     if (!symbol) return null;
     symbol = symbol.toUpperCase();
-    // If it already ends with USDT, USDC, BTC, etc., return as-is
-    if (symbol.endsWith('USDT') || symbol.endsWith('USDC') || symbol.endsWith('BTC')) {
-      return symbol;
+    
+    // 1. Determine the baseline target symbol (e.g. BTC -> BTCUSDT, BTCUSDT -> BTCUSDT)
+    let target = symbol;
+    if (!symbol.endsWith('USDT') && !symbol.endsWith('USDC') && !symbol.endsWith('BTC')) {
+      target = `${symbol}USDT`;
     }
-    // Default to USDT pair
-    return `${symbol}USDT`;
+
+    // 2. Check if there's a mapped MEXC-specific alias (e.g. ALTUSDT -> ALTLAYERUSDT)
+    if (config.symbolMappings && config.symbolMappings[target]) {
+      const mapped = config.symbolMappings[target];
+      logger.info(`🔀 Mapping symbol alias: ${target} -> ${mapped}`);
+      return mapped;
+    }
+
+    return target;
   }
 
   /**

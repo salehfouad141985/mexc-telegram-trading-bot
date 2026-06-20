@@ -30,6 +30,13 @@ const config = {
     autoTrade: process.env.AUTO_TRADE === 'true',
     dryRun: process.env.DRY_RUN !== 'false', // default true for safety
     maxSpreadPercent: parseFloat(process.env.MAX_SPREAD_PERCENT) || 1.0,
+    priceTolerancePercent: parseFloat(process.env.PRICE_TOLERANCE_PERCENT) || 1.5,
+  },
+
+  // Symbol Mappings/Aliases for MEXC
+  symbolMappings: {
+    'ALTUSDT': 'ALTLAYERUSDT',
+    'AXLUSDT': 'WAXLUSDT',
   },
 
   // Risk Management — target allocation percentages
@@ -64,6 +71,7 @@ async function reloadConfig() {
         case 'MIN_SCORE': config.trading.minScore = parseFloat(value); break;
         case 'AUTO_TRADE': config.trading.autoTrade = (value === 'true'); break;
         case 'DRY_RUN': config.trading.dryRun = (value === 'true'); break;
+        case 'PRICE_TOLERANCE_PERCENT': config.trading.priceTolerancePercent = parseFloat(value); break;
         case 'TP1_PERCENT': config.risk.tp1Percent = parseFloat(value); break;
         case 'TP2_PERCENT': config.risk.tp2Percent = parseFloat(value); break;
         case 'TP3_PERCENT': config.risk.tp3Percent = parseFloat(value); break;

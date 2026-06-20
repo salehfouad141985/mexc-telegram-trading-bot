@@ -112,6 +112,18 @@ const signals = {
       .maybeSingle();
     if (error) return null;
     return data;
+  },
+
+  async getMaxTelegramMsgId() {
+    const { data, error } = await supabase
+      .from('bot_signals')
+      .select('telegram_msg_id')
+      .not('telegram_msg_id', 'is', null)
+      .order('telegram_msg_id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return 0;
+    return data.telegram_msg_id || 0;
   }
 };
 
@@ -370,6 +382,7 @@ module.exports = {
   getActiveSignals: signals.getActive,
   getAllSignals: signals.getAll,
   getSignalByTelegramMsgId: signals.getByTelegramMsgId,
+  getMaxTelegramMsgId: signals.getMaxTelegramMsgId,
   // Trades
   insertTrade: trades.insert,
   updateTradeStatus: trades.updateStatus,

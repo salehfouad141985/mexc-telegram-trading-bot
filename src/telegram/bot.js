@@ -84,8 +84,8 @@ async function pollForMessages() {
   if (!client || !targetEntity) return;
 
   try {
-    // Fetch the latest 5 messages from the target channel
-    const messages = await client.getMessages(targetEntity, { limit: 5 });
+    // Fetch the latest 20 messages from the target channel (increased from 5 to catch up on downtime)
+    const messages = await client.getMessages(targetEntity, { limit: 20 });
     
     if (!messages || messages.length === 0) return;
 
@@ -100,6 +100,11 @@ async function pollForMessages() {
 
       logger.info(`📩 New message detected (ID: ${msg.id}): ${text.substring(0, 80)}...`);
 
+      // Check if message is older than 15 minutes (900 seconds)
+      const nowUnix = Math.floor(Date.now() / 1000);
+      const msgAgeSeconds = nowUnix - msg.date;
+      const isOutdated = msgAgeSeconds > 900; // 15 minutes
+
       // Try to parse as a trading signal
       const parsedSignal = signalParser.parse(text);
       if (parsedSignal) {
@@ -112,6 +117,32 @@ async function pollForMessages() {
 
         parsedSignal.raw_message = text;
         parsedSignal.telegram_msg_id = msg.id;
+
+        if (isOutdated) {
+          logger.warn(`🕰️ Signal skipped because it is too old (${Math.round(msgAgeSeconds / 60)} mins ago): ${parsedSignal.symbol}`);
+          try {
+            // Save signal to DB as SKIPPED_OUTDATED so it is not processed again
+            await db.insertSignal({
+              symbol: parsedSignal.symbol,
+              timeframe: parsedSignal.timeframe || 'unknown',
+              entry_price: parsedSignal.entry,
+              stop_loss: parsedSignal.stopLoss || null,
+              tp1: parsedSignal.tp1 || null,
+              tp2: parsedSignal.tp2 || null,
+              tp3: parsedSignal.tp3 || null,
+              tp4: parsedSignal.tp4 || null,
+              score: parsedSignal.score || 0,
+              setup: parsedSignal.setup || '',
+              status: 'SKIPPED_OUTDATED',
+              raw_message: text,
+              telegram_msg_id: msg.id,
+            });
+            db.logActivity('SKIP', `Outdated signal skipped: ${parsedSignal.symbol} (${Math.round(msgAgeSeconds / 60)} mins ago)`);
+          } catch (dbErr) {
+            logger.error('❌ Error saving outdated signal to DB', { error: dbErr.message });
+          }
+          continue;
+        }
 
         logger.info('🎯 Signal parsed successfully!', { 
           symbol: parsedSignal.symbol, 
@@ -263,13 +294,20 @@ async function startBot(onSignal) {
 
     // Get the latest message ID so we only process NEW messages going forward
     try {
-      const latestMessages = await client.getMessages(targetEntity, { limit: 1 });
-      if (latestMessages && latestMessages.length > 0) {
-        lastProcessedMsgId = latestMessages[0].id;
-        logger.info(`📌 Starting from message ID: ${lastProcessedMsgId} (will only process newer messages)`);
+      const dbMaxId = await db.getMaxTelegramMsgId();
+      if (dbMaxId > 0) {
+        lastProcessedMsgId = dbMaxId;
+        logger.info(`📌 Initialized last processed message ID from database: ${lastProcessedMsgId} (will fetch any missed messages since then)`);
+      } else {
+        // Fallback: Get the latest message ID from the channel
+        const latestMessages = await client.getMessages(targetEntity, { limit: 1 });
+        if (latestMessages && latestMessages.length > 0) {
+          lastProcessedMsgId = latestMessages[0].id;
+          logger.info(`📌 No database messages found. Starting from channel latest message ID: ${lastProcessedMsgId}`);
+        }
       }
     } catch (err) {
-      logger.warn(`⚠️ Could not fetch latest message ID: ${err.message}`);
+      logger.warn(`⚠️ Could not initialize latest message ID: ${err.message}`);
     }
 
     // Start polling for new messages (REPLACES broken event handler)
