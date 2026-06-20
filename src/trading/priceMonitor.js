@@ -101,7 +101,7 @@ async function checkPrices() {
              await db.logActivity('SYNC', `Signal closed: ${signal.symbol} was sold manually on exchange.`);
              
              // Cancel SL order if exists
-             if (signal.sl_order_id) {
+             if (signal.sl_order_id && !signal.sl_order_id.startsWith('LOCAL_SL_') && !signal.sl_order_id.startsWith('DRY_SL_')) {
                await mexcClient.cancelOrder(signal.symbol, signal.sl_order_id).catch(() => {});
              }
              continue; 
@@ -230,7 +230,7 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
     logger.info(`📈 Executing ${target.label} Market Sell: ${signal.symbol} | Qty: ${sellQty}`);
 
     // Step 1: Cancel existing SL order if it exists (CRITICAL: Prevents balance locked error)
-    if (!config.trading.dryRun && signal.sl_order_id) {
+    if (!config.trading.dryRun && signal.sl_order_id && !signal.sl_order_id.startsWith('LOCAL_SL_') && !signal.sl_order_id.startsWith('DRY_SL_')) {
       try {
         logger.info(`❎ Cancelling exchange SL (${signal.sl_order_id}) to unlock balance for TP...`);
         await mexcClient.cancelOrder(signal.symbol, signal.sl_order_id);
@@ -297,7 +297,7 @@ async function handleTakeProfit(signal, target, currentPrice, newSL) {
       await db.updateSignalStatus(signal.id, 'COMPLETED');
       
       // Cancel the final SL order if it exists
-      if (!config.trading.dryRun && signal.sl_order_id) {
+      if (!config.trading.dryRun && signal.sl_order_id && !signal.sl_order_id.startsWith('LOCAL_SL_') && !signal.sl_order_id.startsWith('DRY_SL_')) {
         await mexcClient.cancelOrder(signal.symbol, signal.sl_order_id).catch(() => {});
       }
     }

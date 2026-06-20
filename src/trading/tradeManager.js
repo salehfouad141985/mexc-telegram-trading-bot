@@ -274,36 +274,14 @@ class TradeManager {
     if (!stopPrice) return null;
 
     try {
-      let slResult;
-      if (!isDryRun) {
-        // Cancel existing SL order if any
-        if (signal.sl_order_id) {
-          try {
-            await mexcClient.cancelOrder(signal.symbol, signal.sl_order_id);
-          } catch (e) {
-            // Ignore if already filled or cancelled
-          }
-        }
-
-        // MEXC V3 often requires STOP_LOSS_LIMIT instead of a pure STOP_LOSS (Market)
-        // We set price slightly lower (2%) than stopPrice to ensure it fills like a market order
-        const limitPrice = parseFloat((stopPrice * 0.98).toFixed(8)); 
-        
-        slResult = await mexcClient.createOrder({
-          symbol: signal.symbol,
-          side: 'SELL',
-          type: 'STOP_LOSS_LIMIT',
-          quantity: quantity,
-          price: limitPrice,
-          stopPrice: stopPrice,
-        });
-      } else {
-        slResult = {
-          orderId: `DRY_SL_${Date.now()}`,
-          symbol: signal.symbol,
-          status: 'NEW'
-        };
-      }
+      // Note: MEXC Spot V3 API does not support STOP_LOSS_LIMIT or STOP_LIMIT order types.
+      // Therefore, stop losses are managed locally by the price monitor (priceMonitor.js)
+      // which polls prices and places a MARKET SELL order when triggered.
+      const slResult = {
+        orderId: isDryRun ? `DRY_SL_${Date.now()}` : `LOCAL_SL_${Date.now()}`,
+        symbol: signal.symbol,
+        status: 'NEW'
+      };
 
       // Save the SL order ID for future tracking/cancellation
       await db.updateSlOrderId(signal.id, slResult.orderId);
@@ -313,23 +291,23 @@ class TradeManager {
         signal_id: signal.id,
         symbol: signal.symbol,
         side: 'SELL',
-        type: 'STOP_LOSS_MARKET',
+        type: 'STOP_LOSS_LOCAL',
         quantity: quantity,
         price: stopPrice,
         order_id: slResult.orderId,
-        mexc_order_id: slResult.orderId || null,
+        mexc_order_id: null,
         status: isDryRun ? 'SIMULATED' : 'PENDING',
         target_label: 'SL',
         is_dry_run: isDryRun ? 1 : 0,
       });
 
-      const msg = `${isDryRun ? '🧪' : '🛡️'} Exchange Stop Loss placed: ${signal.symbol} @ $${stopPrice}`;
+      const msg = `🛡️ Local Stop Loss configured: ${signal.symbol} @ $${stopPrice} (monitored locally)`;
       logger.info(msg);
       await db.logActivity('SL_PLACED', msg);
       
       return slResult.orderId;
     } catch (err) {
-      logger.error(`❌ Failed to place Stop Loss order on exchange`, { error: err.message });
+      logger.error(`❌ Failed to configure Stop Loss order`, { error: err.message });
       return null;
     }
   }
