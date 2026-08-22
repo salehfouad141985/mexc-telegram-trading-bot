@@ -62,7 +62,7 @@ async function run() {
 
       // Avoid duplicate trigger if it's already in DB and completely traded
       // But since user requested explicit fetch and execute, we will just pass it to tradeManager
-      const exists = db.getSignalByTelegramMsgId.get(latestSignal.telegram_msg_id);
+      const exists = await db.getSignalByTelegramMsgId(latestSignal.telegram_msg_id);
       
       if (!exists) {
         const signalObj = {
@@ -80,7 +80,7 @@ async function run() {
           raw_message: latestSignal.raw_message,
           telegram_msg_id: latestSignal.telegram_msg_id
         };
-        const info = db.insertSignal.run(signalObj);
+        const info = await db.insertSignal(signalObj);
         latestSignal.id = info.lastInsertRowid;
       } else {
          latestSignal.id = exists.id;

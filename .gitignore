@@ -1,5 +1,12 @@
-node_modules/
+﻿node_modules/
 .env
-data/
-*.db
-*.log
+.env.*
+!.env.example
+data/*.log
+data/*.db
+data/*.sqlite
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db

@@ -317,10 +317,10 @@ class TradeManager {
    */
   async placeTargetOrders(signal, totalQuantity, isDryRun) {
     const targets = [
-      { label: 'TP1', price: signal.tp1, pct: config.risk.tp1Percent },
-      { label: 'TP2', price: signal.tp2, pct: config.risk.tp2Percent },
-      { label: 'TP3', price: signal.tp3, pct: config.risk.tp3Percent },
-      { label: 'TP4', price: signal.tp4, pct: config.risk.tp4Percent },
+      { label: 'TP1', price: signal.tp1, pct: signal.targetPcts?.[0] || config.risk.tp1Percent },
+      { label: 'TP2', price: signal.tp2, pct: signal.targetPcts?.[1] || config.risk.tp2Percent },
+      { label: 'TP3', price: signal.tp3, pct: signal.targetPcts?.[2] || config.risk.tp3Percent },
+      { label: 'TP4', price: signal.tp4, pct: signal.targetPcts?.[3] || config.risk.tp4Percent },
     ].filter((t) => t.price);
 
     for (const target of targets) {
